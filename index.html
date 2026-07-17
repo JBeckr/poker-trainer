@@ -1005,7 +1005,7 @@
 
 <div class="toast" id="toast"></div>
 
-<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. Flop Defense/Turn Barrel/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); your progress can be backed up as a file in the 📈 overlay. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
+<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); your progress can be backed up as a file in the 📈 overlay. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
 
 <script>
 /* ================================================================
@@ -1145,7 +1145,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '1.2.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '1.3.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2831,6 +2831,133 @@ MODES.barrel = {
   }
 };
 
+/* ---------------- River Decisions (Ch 12, extended) ----------------
+   You c-bet the flop and barrelled the turn (same line as Turn Barrel), a villain of a
+   given type called both times. River: VALUE BET / BLUFF / CHECK. Not a book chart —
+   an original extension of Ch 12's barrelling idea to a third street, built the same way
+   as Turn Barrel/Value Bet: reuse handClassFlop (board-length agnostic) rather than
+   inventing new machinery.
+   The key trick: handClassFlop's drawTier, evaluated on the full 5-card river board,
+   naturally identifies a MISSED draw (4 to a flush / open-end that never completed) —
+   exactly the blocker-bluff signal a real river bluff-selection heuristic wants, with
+   zero new draw-detection code. Made hands get value-bet by strength; middle/weak pairs
+   check back (the same "don't burn showdown value" lesson as Turn Barrel); busted draws
+   with no blockers just give up. Villain type shifts thin value and bluff frequency, same
+   as Value Bet: stations never fold (no bluffing, bet all value thick), nits fold too much
+   (skip thin value, widen bluffs). */
+function riverDecision(cls, villainType) {
+  if (cls.madeTier === 'monster' || cls.madeTier === 'overpair')
+    return { act: 'value', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — clear value, bet big and get paid by worse.' };
+  if (cls.madeTier === 'top') {
+    if (!cls.kickerGood && villainType === 'nit')
+      return { act: 'check', diff: 2, why: '<b>' + cls.madeLabel + '</b> vs a nit — he only continues with hands that beat you here. Betting thin just gets called by better or folds out worse. Check.' };
+    if (!cls.kickerGood && villainType === 'reg')
+      return { act: 'check', diff: 3, why: '<b>' + cls.madeLabel + '</b> vs a thinking reg — too thin to bet three streets for value here. Take the free showdown.' };
+    return { act: 'value', diff: villainType === 'station' ? 1 : 2, why: '<b>' + cls.madeLabel + '</b> — worth a value bet' + (villainType === 'station' ? ' vs a station who pays off anything' : '') + '.' };
+  }
+  if (cls.madeTier === 'middle' || cls.madeTier === 'weak')
+    return { act: 'check', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — showdown value only. Betting turns a hand that can win at showdown into a bluff, folding out everything you beat. Check.' };
+  // air — only a busted draw carries blockers worth bluffing with
+  if (cls.drawTier === 'strong' || cls.drawTier === 'combo') {
+    if (villainType === 'station')
+      return { act: 'check', diff: 2, why: 'Missed your draw, no showdown value — but a station calls with any pair regardless of size, so a bluff has zero fold equity here. Give up.' };
+    return { act: 'bluff', diff: villainType === 'nit' ? 1 : 2, why: 'Missed your ' + (cls.flush === 'fd' ? 'flush draw' : 'straight draw') + ' — but it blocks the flush/straight combos in his continuing range, so a bluff still gets folds' + (villainType === 'nit' ? ' easily against a nit who folds too much anyway' : ' often enough to profit') + '.' };
+  }
+  if (cls.drawTier === 'weak') {
+    if (villainType === 'nit')
+      return { act: 'bluff', diff: 3, why: 'Only a busted gutshot — thin blockers, but a nit folds enough marginal hands that a small bluff still shows profit here.' };
+    return { act: 'check', diff: 2, why: 'Only a busted gutshot — too few blockers to bluff profitably. Check and give up.' };
+  }
+  return { act: 'check', diff: 1, why: '<b>No pair, no draw</b> — nothing to block, no story to tell. Check and give up.' };
+}
+function riverFamily(cls, dec) {
+  if (dec.act === 'value') return cls.madeTier === 'monster' ? 'monster' : cls.madeTier === 'overpair' ? 'overpair' : 'thin-value';
+  if (cls.madeTier === 'middle' || cls.madeTier === 'weak') return 'showdown-value';
+  if (dec.act === 'bluff') return 'bluff';
+  if (cls.drawTier !== 'none') return 'missed-draw';
+  return 'air-giveup';
+}
+
+MODES.river = {
+  label: 'River', chapter: 'Ch 12+', tiered: true,
+  bucketTitle: 'Accuracy by hand class',
+  bucketList: () => ['monster','overpair','thin-value','showdown-value','bluff','missed-draw','air-giveup']
+    .map(k => ({ key: k, label: k.replace('-', ' ') })),
+  buttons: () => [
+    { id: 'check', label: 'CHECK', key: 'c', css: 'btn-call'  },
+    { id: 'value', label: 'VALUE', key: 'v', css: 'btn-raise' },
+    { id: 'bluff', label: 'BLUFF', key: 'b', css: 'btn-chip'  }
+  ],
+  deal(params) {
+    const maxDiff = (params && params.maxDiff) || 3;
+    let opener, heroCards, flop, turn, river, villainType, cls, dec;
+    if (params && params.board) {
+      opener = params.opener; heroCards = params.hero.map(strToCard);
+      const b = params.board.map(strToCard);
+      flop = b.slice(0, 3); turn = b[3]; river = b[4];
+      villainType = params.villainType;
+      cls = handClassFlop(heroCards, b);
+      dec = riverDecision(cls, villainType);
+    } else {
+      let tries = 0;
+      while (tries++ < 700) {
+        opener = pick(['MP', 'CO', 'BTN']);
+        heroCards = cardsForNotation(pick([...RANGES[opener]]));
+        flop = dealCards(3, heroCards);
+        if (cbetScore(cbetBoard(flop)) < 1) continue;      // plausible flops for hero to have c-bet
+        turn = dealCards(1, [...heroCards, ...flop])[0];
+        river = dealCards(1, [...heroCards, ...flop, turn])[0];
+        cls = handClassFlop(heroCards, [...flop, turn, river]);
+        villainType = maxDiff >= 2 ? pick(['station', 'reg', 'nit']) : 'reg';
+        dec = riverDecision(cls, villainType);
+        if (dec.diff > maxDiff) continue;
+        const fam = riverFamily(cls, dec);
+        if (fam === 'air-giveup' && Math.random() < 0.65) continue;     // trim the least instructive spot
+        if (fam === 'showdown-value' && Math.random() < 0.3) continue;  // seen already in Turn Barrel — trim repeats
+        break;
+      }
+    }
+    const potBB = 21.1, betBB = 14;
+    const seats = {};
+    for (const p of ALL_POS) { if (p === opener) continue; seats[p] = { folded: p !== 'BB' }; }
+    seats['BB'] = { folded: false, chip: VILLAIN_TYPES[villainType].tag + ' · called x2', chipClass: 'chip-call' };
+    return {
+      opener, heroCards, flop, turn, river, board: [...flop, turn, river], villainType, cls, dec, potBB, betBB,
+      table: {
+        heroPos: opener, heroCards, board: [...flop, turn, river],
+        prompt: 'You bet flop and turn, a ' + VILLAIN_TYPES[villainType].tag.toLowerCase() + ' called both. River — pot ' + potBB + 'bb. Bet ' + betBB + 'bb or check?',
+        seats
+      }
+    };
+  },
+  descriptor: s => ({ opener: s.opener, hero: s.heroCards.map(cardStr), board: s.board.map(cardStr), villainType: s.villainType }),
+  grade(s, action) {
+    const rec = s.dec.act;
+    const correct = action === rec;
+    const fam = riverFamily(s.cls, s.dec);
+    const vt = VILLAIN_TYPES[s.villainType];
+    const labels = { check: 'CHECK', value: 'VALUE', bluff: 'BLUFF' };
+    const order = { check: 0, value: 1, bluff: 1 };
+    return {
+      correct, correctAction: rec,
+      title: correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec],
+      html: s.dec.why + '<br><span style="color:var(--muted)">Villain: ' + vt.blurb + '. Same sizing whether you value bet or bluff — a bluff has to look like a value bet to work.</span>',
+      extra: { title: 'Your hand', html:
+        '<div style="font-size:1.15rem;margin-bottom:6px">' + s.heroCards.map(cardSpan).join(' &nbsp; ') + '</div>' +
+        '<div><b>' + s.cls.madeLabel + '</b></div>' +
+        '<div style="color:var(--muted);font-size:0.8rem">' +
+          (s.cls.drawTier === 'none' ? 'no draw' : 'missed ' + (s.cls.flush === 'fd' ? 'flush draw' : s.cls.straight === 'oesd' ? 'open-ender' : 'gutshot')) + '</div>' +
+        '<div style="color:var(--muted);font-size:0.8rem;margin-top:6px">Board ' + s.board.map(cardSpan).join(' ') + '</div>' },
+      matrix: null,
+      bucket: fam,
+      tags: { handClass: fam,
+              direction: correct ? null :
+                (action === 'check' && rec !== 'check') ? 'passive' :
+                (action !== 'check' && rec === 'check') ? 'aggressive' : null }
+    };
+  }
+};
+
 /* ---------------- vs 3-Bet (Preflop Bible Vol.3, 4bet section pp.33-40) ----------------
    You opened, villain 3-bet: 4-BET / CALL / FOLD. Ranges pixel-scanned straight from
    the book's charts, so mixed cells carry both actions (4-bet-or-fold bluffs, call-or-4bet,
@@ -3459,10 +3586,10 @@ MODES.threebetpot = {
    Grind Loop: Leitner review, tiers, leak finder, badges
    ================================================================ */
 const REVIEW_GAP = { 1: 5, 2: 12 };   // answers until due, per box
-const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 7/8', barrel: 'Ch 12', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
+const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 7/8', barrel: 'Ch 12', river: 'Ch 12 (ext.)', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
 const MODE_GROUPS = [
   { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef', 'stackdepth'] },
-  { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'valuebet', 'threebetpot'] },
+  { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'river', 'valuebet', 'threebetpot'] },
   { label: 'Combos',   modes: ['combos'] }
 ];
 const MODE_INFO = {
@@ -3476,6 +3603,7 @@ const MODE_INFO = {
   cbet:     { title: 'C-Bet', text: 'Kapitel 4 — Continuation-Bet-Entscheidung nach Range-Vorteil und Board-Textur. Gib den Auto-C-Bet auf Boards auf, die den Caller begünstigen.' },
   flopdef:  { title: 'Flop Defense', text: 'Kapitel 7–8 — BB gegen einen Flop-C-Bet verteidigen: Made-Hand-Stufen, Draws und ihre Outs, und der Preis, den du bekommst.' },
   barrel:   { title: 'Turn Barrel', text: 'Kapitel 12 — zweite Patrone auf dem Turn: gute vs. schlechte Turn-Karten, und Showdown-Value nicht wegbrennen.' },
+  river:    { title: 'River', text: 'Erweiterung von Kapitel 12 — dritte Straße: Value/Bluff/Check. Verpasste Draws mit Blockern sind die besten Bluffs; Gegnertyp entscheidet über dünnen Value und Bluff-Frequenz (Stationen nie bluffen, Nits mehr).' },
   valuebet: { title: 'Value Bet', text: 'Kapitel 5 — wie viele Straßen eine Made Hand wert ist, angepasst an den Gegnertyp (Station/Nit), plus das seltene Slowplay.' },
   threebetpot: { title: '3-Bet Pot', text: 'Kapitel 13 — C-Betten als 3-Better: dein Range-Vorteil ist auf hohen Boards noch größer als sonst, aber auf tiefen/verbundenen Boards schwächer, weil die Flatting-Range des Gegners genau dort wohnt.' },
   combos:   { title: 'Combos', text: 'Kapitel 9 — Combos zählen (Paare=6, Suited=4, Offsuit=12) und wie Card Removal (Blocker) sie schrumpft.' }
@@ -3628,6 +3756,8 @@ const BADGES = [
     test: () => (stats.modes.flopdef || {}).correct >= 20 },
   { id: 'barrel20',  icon: '💣', name: 'Second Barrel',  blurb: '20 correct answers in Turn Barrel',
     test: () => (stats.modes.barrel || {}).correct >= 20 },
+  { id: 'river20',   icon: '🌊', name: 'River Read',      blurb: '20 correct answers in River',
+    test: () => (stats.modes.river || {}).correct >= 20 },
   { id: 'vs3bet20',  icon: '🚀', name: 'Four-Bet Fighter', blurb: '20 correct answers in vs 3-Bet',
     test: () => (stats.modes.vs3bet || {}).correct >= 20 },
   { id: 'valuebet20',icon: '💰', name: 'Street Smart',    blurb: '20 correct answers in Value Bet',
