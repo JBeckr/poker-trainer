@@ -1,11 +1,19 @@
 // Bump this whenever index.html changes so returning visitors pick up the
-// update (old caches are dropped on activate).
-const CACHE_NAME = 'preflop-trainer-v1';
+// update (old caches are dropped on activate). Keep in sync with APP_VERSION
+// in index.html — the in-app Updates panel relies on this file's bytes
+// changing to trigger the browser's service-worker update check.
+const CACHE_NAME = 'preflop-trainer-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
-  self.skipWaiting();
+  // No skipWaiting() here — the new worker waits until the page tells it to
+  // take over (manual "Jetzt aktualisieren" click or the auto-update toggle),
+  // so an update never yanks the rug out from under a mid-session user.
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

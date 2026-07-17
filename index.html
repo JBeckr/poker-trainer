@@ -252,9 +252,19 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
+    position: relative;
   }
   .stat-btn:hover { border-color: var(--gold-dark); }
   .stat-btn .lbl { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  .stat-btn.has-update::after {
+    content: '';
+    position: absolute;
+    top: 3px; right: 5px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 0 2px var(--panel);
+  }
   .viewer-overlay {
     position: fixed;
     inset: 0;
@@ -836,6 +846,7 @@
   <div class="stats">
     <button class="stat-btn" id="btn-progress">📈 Fortschritt<span class="lbl">Analyse</span></button>
     <button class="stat-btn" id="btn-viewer">📖 Ranges<span class="lbl">ansehen</span></button>
+    <button class="stat-btn" id="btn-update">🔄 Updates<span class="lbl" id="update-lbl">aktuell</span></button>
     <div class="stat"><div class="val good" id="stat-score">0/0</div><div class="lbl">Score</div></div>
     <div class="stat"><div class="val" id="stat-acc">–</div><div class="lbl">Accuracy</div></div>
     <div class="stat"><div class="val streak" id="stat-streak">0</div><div class="lbl">Streak</div></div>
@@ -895,6 +906,29 @@
       <div class="backup-hint">Lädt deine Statistiken als Datei herunter, oder stellt sie auf einem anderen Gerät/Browser wieder her.</div>
       <div class="backup-msg" id="backup-msg"></div>
     </div>
+  </div>
+</div>
+
+<div class="viewer-overlay" id="update">
+  <div class="viewer-panel" style="max-width:480px">
+    <div class="viewer-head">
+      <h2>🔄 Updates</h2>
+      <button class="viewer-close" id="update-close">✕ close</button>
+    </div>
+    <div class="prog-section">
+      <div class="prog-title">Status</div>
+      <div class="backup-hint" id="update-status" style="margin-bottom:10px"></div>
+      <div class="backup-row">
+        <button class="backup-btn" id="btn-apply-update" style="display:none">⬇ Jetzt aktualisieren</button>
+        <button class="backup-btn" id="btn-check-update">🔍 Nach Updates suchen</button>
+      </div>
+    </div>
+    <div class="prog-section" style="margin-bottom:0">
+      <div class="prog-title">Automatische Updates</div>
+      <button class="fb-toggle" id="au-toggle"></button>
+      <div class="backup-hint" style="margin-top:8px">An: die App aktualisiert sich selbst und lädt neu, sobald ein Update bereitsteht. Aus: du entscheidest per Klick oben.</div>
+    </div>
+    <div class="backup-hint" style="margin-top:12px">Version <b id="app-version"></b></div>
   </div>
 </div>
 
@@ -963,7 +997,7 @@
 
 <div class="toast" id="toast"></div>
 
-<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. Flop Defense/Turn Barrel/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); your progress can be backed up as a file in the 📈 overlay. Ranges for study, not gospel.</footer>
+<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. Flop Defense/Turn Barrel/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); your progress can be backed up as a file in the 📈 overlay. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
 
 <script>
 /* ================================================================
@@ -1103,6 +1137,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
+const APP_VERSION = '1.1.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -3752,6 +3787,7 @@ $('viewer-close').addEventListener('click', closeViewer);
 $('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') closeViewer(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && $('viewer').classList.contains('show')) closeViewer();
+  if (e.key === 'Escape' && $('update').classList.contains('show')) closeUpdatePanel();
 });
 
 $('fb-toggle').addEventListener('click', () => {
@@ -3837,6 +3873,83 @@ function renderProgress() {
 function openProgress() { renderProgress(); $('progress').classList.add('show'); $('backup-msg').textContent = ''; }
 function closeProgress() { $('progress').classList.remove('show'); }
 $('btn-progress').addEventListener('click', openProgress);
+
+/* ================================================================
+   In-app updates (service worker lifecycle)
+   ================================================================ */
+let swRegistration = null;
+let waitingWorker = null;
+
+function autoUpdateOn() { return stats.autoUpdate !== false; }   // default: on
+
+function renderUpdateUI() {
+  $('btn-update').classList.toggle('has-update', !!waitingWorker && !autoUpdateOn());
+  $('update-lbl').textContent = waitingWorker ? 'Update!' : 'aktuell';
+  const on = autoUpdateOn();
+  $('au-toggle').classList.toggle('on', on);
+  $('au-toggle').textContent = on ? 'Automatisch: AN' : 'Automatisch: AUS';
+  $('app-version').textContent = APP_VERSION;
+  $('update-status').textContent = waitingWorker
+    ? 'Ein neues Update ist bereit.'
+    : 'Du hast die neueste Version.';
+  $('btn-apply-update').style.display = waitingWorker ? 'inline-block' : 'none';
+}
+
+function applyUpdate() {
+  if (!waitingWorker) return;
+  $('update-status').textContent = 'Wird aktualisiert…';
+  waitingWorker.postMessage('SKIP_WAITING');
+}
+
+function onUpdateFound() {
+  renderUpdateUI();
+  if (autoUpdateOn()) applyUpdate();
+}
+
+function openUpdatePanel() { renderUpdateUI(); $('update').classList.add('show'); }
+function closeUpdatePanel() { $('update').classList.remove('show'); }
+$('btn-update').addEventListener('click', openUpdatePanel);
+$('update-close').addEventListener('click', closeUpdatePanel);
+$('update').addEventListener('click', e => { if (e.target.id === 'update') closeUpdatePanel(); });
+$('btn-apply-update').addEventListener('click', applyUpdate);
+$('btn-check-update').addEventListener('click', () => {
+  if (swRegistration) swRegistration.update().catch(() => {});
+  $('update-status').textContent = 'Suche nach Updates…';
+  setTimeout(renderUpdateUI, 1200);
+});
+$('au-toggle').addEventListener('click', () => {
+  stats.autoUpdate = !autoUpdateOn();
+  save();
+  renderUpdateUI();
+  if (autoUpdateOn() && waitingWorker) applyUpdate();
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('service-worker.js');
+      swRegistration = reg;
+      if (reg.waiting && navigator.serviceWorker.controller) { waitingWorker = reg.waiting; onUpdateFound(); }
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            waitingWorker = nw;
+            onUpdateFound();
+          }
+        });
+      });
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);   // hourly check for long-open tabs
+    } catch (e) {}
+  });
+  let reloadedOnce = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedOnce) return;
+    reloadedOnce = true;
+    window.location.reload();
+  });
+}
 $('progress-close').addEventListener('click', closeProgress);
 $('progress').addEventListener('click', e => { if (e.target.id === 'progress') closeProgress(); });
 document.addEventListener('keydown', e => {
@@ -3881,7 +3994,7 @@ $('import-file').addEventListener('change', (e) => {
     save();
     if (stats.lastMode && MODES[stats.lastMode]) activeModeId = stats.lastMode;
     renderTabs(); renderStats(); renderBuckets(); renderFocusBar(); renderSpeedBar();
-    renderLeaks(); renderTrophies(); renderProgress();
+    renderLeaks(); renderTrophies(); renderProgress(); renderUpdateUI();
     nextSpot();
     backupMsg('✓ Wiederhergestellt.', true);
   };
@@ -3899,14 +4012,8 @@ renderFocusBar();
 renderSpeedBar();
 renderLeaks();
 renderTrophies();
+renderUpdateUI();
 nextSpot();
-</script>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('service-worker.js').catch(() => {});
-    });
-  }
 </script>
 </body>
 </html>
