@@ -1333,6 +1333,7 @@ const PROFILED_MODES = ['rfi', 'vsopen'];
 let activeModeId = 'rfi';
 let spot = null;
 let answered = false;
+let autoAdvanceTimer = null;
 
 function activeProfile() { return stats.profile || 'pb3'; }   // Preflop Bible is the default
 function statsId(modeId = activeModeId) {
@@ -1383,6 +1384,7 @@ function renderFocusBar() {
 }
 
 function nextSpot() {
+  if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
   answered = false;
   const mode = MODES[activeModeId];
   spot = schedule(mode);            // Grind Loop may serve a review spot
@@ -1390,6 +1392,7 @@ function nextSpot() {
   renderButtons(mode.buttons(spot));
   $('feedback').classList.remove('show');
   $('btn-next').style.display = 'none';
+  $('btn-next').textContent = 'NEXT HAND — space';
 }
 
 // placeholder scheduler — Grind Loop stage replaces the body
@@ -1436,6 +1439,13 @@ function onAction(actionId) {
   renderBuckets();
   renderFeedback(res);
   if (activeModeId === 'valuebet') renderValueBetSizingWidget();
+  // auto-advance on a correct answer, unless the Value Bet sizing bonus is still waiting
+  // for its own click — give the user time to answer that first.
+  const holdForSizing = activeModeId === 'valuebet' && spot.dec && spot.dec.streets >= 1;
+  if (res.correct && !holdForSizing) {
+    $('btn-next').textContent = 'Weiter in 2s… (space = jetzt)';
+    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; nextSpot(); }, 2000);
+  }
 }
 
 $('btn-next').addEventListener('click', nextSpot);
