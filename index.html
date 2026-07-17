@@ -807,8 +807,8 @@
     .pill { padding: 6px 12px; }
 
     .table-wrap { padding: 12px 10px 10px; }
-    .table { height: 268px; }
-    .felt { inset: 24px 14px; border-width: 7px; }
+    .table { height: 300px; }
+    .felt { inset: 34px 20px; border-width: 7px; }
     .seat { width: 66px; gap: 2px; }
     .seat .badge { font-size: 0.58rem; padding: 2px 7px; }
     .seat .stack { font-size: 0.52rem; }
@@ -1145,7 +1145,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '1.2.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '1.2.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
