@@ -198,6 +198,37 @@
   .fb-toggle.on { color: var(--green); border-color: var(--green-dark); background: #12351f; padding: 4px 26px 4px 12px; }
   .fb-toggle.on::before { background: var(--green); left: calc(100% - 17px); }
 
+  /* ---------- Speed bar (auto-advance delay) ---------- */
+  .speed-bar {
+    width: 100%;
+    max-width: 860px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 8px 14px;
+    background: var(--panel);
+    border: 1px solid #2b3342;
+    border-radius: 10px;
+    font-size: 0.74rem;
+    flex-wrap: wrap;
+  }
+  .speed-bar .sb-label { font-weight: 700; letter-spacing: 0.3px; }
+  .speed-bar .sb-pills { display: flex; gap: 4px; }
+  .speed-bar .sb-pill {
+    background: #2a3140;
+    border: 1px solid #3a4254;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .speed-bar .sb-pill:hover { color: var(--text); }
+  .speed-bar .sb-pill.active { color: var(--gold); border-color: var(--gold-dark); background: #2a2617; }
+  .speed-bar .sb-hint { color: var(--muted); font-size: 0.68rem; }
+
   /* ---------- Range viewer ---------- */
   .stat-btn {
     background: var(--panel);
@@ -265,6 +296,23 @@
   .prog-mode-row .pm-fill { height: 100%; border-radius: 4px; }
   .prog-mode-row .pm-val { flex: 0 0 78px; text-align: right; color: var(--muted); white-space: nowrap; }
   .prog-mode-row .pm-tier { margin-left: 3px; }
+  .backup-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .backup-btn {
+    flex: 1;
+    background: linear-gradient(180deg, #3a4356, #2a3140);
+    border: 1px solid #4a5468;
+    color: #fff;
+    border-radius: 9px;
+    padding: 9px 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .backup-btn:hover { filter: brightness(1.15); }
+  .backup-hint { color: var(--muted); font-size: 0.72rem; line-height: 1.4; }
+  .backup-msg { font-size: 0.78rem; margin-top: 8px; min-height: 1.2em; }
+  .backup-msg.ok { color: var(--green); }
+  .backup-msg.err { color: var(--red); }
 
   /* ---------- Table ---------- */
   .table-wrap {
@@ -829,6 +877,16 @@
       <div class="prog-title">Größte Leaks</div>
       <div id="prog-leaks"></div>
     </div>
+    <div class="prog-section" style="margin-bottom:0">
+      <div class="prog-title">Fortschritt sichern</div>
+      <div class="backup-row">
+        <button class="backup-btn" id="btn-export">⬇ Export</button>
+        <button class="backup-btn" id="btn-import">⬆ Import</button>
+        <input type="file" id="import-file" accept="application/json" style="display:none">
+      </div>
+      <div class="backup-hint">Lädt deine Statistiken als Datei herunter, oder stellt sie auf einem anderen Gerät/Browser wieder her.</div>
+      <div class="backup-msg" id="backup-msg"></div>
+    </div>
   </div>
 </div>
 
@@ -836,6 +894,12 @@
   <span class="fb-label">🎯 Trainingsfokus</span>
   <button class="fb-toggle" id="fb-toggle"></button>
   <span class="fb-hint">zeigt vermehrt Grenzhände statt klarer Folds &amp; Premiums</span>
+</div>
+
+<div class="speed-bar" id="speed-bar">
+  <span class="sb-label">⏱️ Auto-Weiter</span>
+  <div class="sb-pills" id="sb-pills"></div>
+  <span class="sb-hint">bei richtiger Antwort · Leertaste springt sofort</span>
 </div>
 
 <div class="table-wrap">
@@ -891,7 +955,7 @@
 
 <div class="toast" id="toast"></div>
 
-<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, Value Bet) use simplified GM-style heuristic models — only clear-cut spots are shown. Flop Defense/Turn Barrel/Value Bet difficulty unlocks as your accuracy rises. Ranges for study, not gospel.</footer>
+<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. Flop Defense/Turn Barrel/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); your progress can be backed up as a file in the 📈 overlay. Ranges for study, not gospel.</footer>
 
 <script>
 /* ================================================================
@@ -1383,6 +1447,25 @@ function renderFocusBar() {
   t.textContent = on ? 'Grenzhände: AN' : 'alle Hände';
 }
 
+const AUTO_ADVANCE_OPTIONS = [1, 2, 3, 5];   // seconds
+function autoAdvanceMs() { return (stats.autoAdvanceSec || 2) * 1000; }
+function renderSpeedBar() {
+  const box = $('sb-pills');
+  box.innerHTML = '';
+  const current = stats.autoAdvanceSec || 2;
+  for (const s of AUTO_ADVANCE_OPTIONS) {
+    const b = document.createElement('button');
+    b.className = 'sb-pill' + (s === current ? ' active' : '');
+    b.textContent = s + 's';
+    b.addEventListener('click', () => {
+      stats.autoAdvanceSec = s;
+      save();
+      renderSpeedBar();
+    });
+    box.appendChild(b);
+  }
+}
+
 function nextSpot() {
   if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
   answered = false;
@@ -1443,8 +1526,9 @@ function onAction(actionId) {
   // for its own click — give the user time to answer that first.
   const holdForSizing = activeModeId === 'valuebet' && spot.dec && spot.dec.streets >= 1;
   if (res.correct && !holdForSizing) {
-    $('btn-next').textContent = 'Weiter in 2s… (space = jetzt)';
-    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; nextSpot(); }, 2000);
+    const secs = stats.autoAdvanceSec || 2;
+    $('btn-next').textContent = 'Weiter in ' + secs + 's… (space = jetzt)';
+    autoAdvanceTimer = setTimeout(() => { autoAdvanceTimer = null; nextSpot(); }, autoAdvanceMs());
   }
 }
 
@@ -1453,7 +1537,7 @@ $('btn-reset').addEventListener('click', () => {
   if (!confirm('Reset ALL stats (every mode, badges, review queue)?')) return;
   stats = freshStats();
   save();
-  renderStats(); renderBuckets(); renderTiers(); renderLeaks(); renderTrophies(); renderFocusBar();
+  renderStats(); renderBuckets(); renderTiers(); renderLeaks(); renderTrophies(); renderFocusBar(); renderSpeedBar();
 });
 document.addEventListener('keydown', e => {
   if (e.repeat) return;
@@ -3136,14 +3220,190 @@ function renderValueBetSizingWidget() {
   }));
 }
 
+/* ---------------- Stack Depth (Ch 14) ----------------
+   Same seat every time (you open the Cutoff) so the ONLY variable is effective
+   stack depth — isolates the chapter's actual lesson instead of mixing it with
+   positional width. 40bb: implied-odds hands (small pairs, weak suited
+   connectors) lose value since you rarely stack anyone for a full buy-in, while
+   dominated offsuit hands become relatively more useful (fold equity + a
+   straightforward stack-off matters more than disguise). 200bb: the reverse —
+   speculative suited hands and small pairs gain value (rare monster wins a full
+   stack), while offsuit broadways lose value (reverse implied odds are costly
+   deep). Book-style heuristic ranges (Ch 14 has no printed charts), same
+   authoring approach as ISO/Sizing. */
+const STACKDEPTH_RAW = {
+  40:  ['55+', 'A7s+', 'K9s+', 'Q9s+', 'J9s+', 'T9s', '98s', '87s', 'A9o+', 'K9o+', 'Q9o+', 'JTo'],
+  100: ['22+', 'A2s+', 'K5s+', 'Q7s+', 'J7s+', 'T8s+', '97s+', '86s+', '75s+', '65s', '54s', 'A9o+', 'K9o+', 'Q9o+', 'J9o+', 'T9o'],
+  200: ['22+', 'A2s+', 'K2s+', 'Q5s+', 'J6s+', 'T6s+', '95s+', '85s+', '74s+', '64s+', '53s+', '43s', 'A9o+', 'KTo+', 'QTo+', 'JTo', 'T9o']
+};
+const STACKDEPTH_DATA = {};
+for (const d of [40, 100, 200]) STACKDEPTH_DATA[d] = expand(STACKDEPTH_RAW[d]);
+// hands whose correct action actually differs somewhere across the three depths —
+// dealt more often since they're the spots that teach the depth adjustment itself
+const STACKDEPTH_FLIPS = (() => {
+  const out = new Set();
+  for (const lb of ALL_HAND_LABELS) {
+    const states = [40, 100, 200].map(d => STACKDEPTH_DATA[d].has(lb));
+    if (new Set(states).size > 1) out.add(lb);
+  }
+  return out;
+})();
+const STACKDEPTH_LABEL = { 40: 'Shallow (40bb)', 100: 'Standard (100bb)', 200: 'Deep (200bb)' };
+
+MODES.stackdepth = {
+  label: 'Stack Depth', chapter: 'Ch 14',
+  bucketTitle: 'Accuracy by depth',
+  bucketList: () => [40, 100, 200].map(d => ({ key: String(d), label: STACKDEPTH_LABEL[d] })),
+  buttons: () => [
+    { id: 'fold',  label: 'FOLD',  key: 'f', css: 'btn-fold'  },
+    { id: 'raise', label: 'RAISE', key: 'r', css: 'btn-raise' }
+  ],
+  deal(params) {
+    const depth = (params && params.depth) || pick([40, 100, 200]);
+    let notation = params && params.notation;
+    if (!notation) notation = Math.random() < 0.75 ? pick([...STACKDEPTH_FLIPS]) : pick(ALL_HAND_LABELS);
+    const cards = cardsForNotation(notation);
+    return {
+      depth, notation,
+      table: {
+        heroPos: 'CO', heroCards: cards,
+        prompt: 'Folded to you in the CO — effective stack ' + depth + 'bb. Your move?',
+        seats: foldedToHero('CO')
+      }
+    };
+  },
+  descriptor: s => ({ depth: s.depth, notation: s.notation }),
+  grade(s, action) {
+    const inRange = STACKDEPTH_DATA[s.depth].has(s.notation);
+    const correctAction = inRange ? 'raise' : 'fold';
+    const correct = action === correctAction;
+    const other = [40, 100, 200].filter(d => d !== s.depth);
+    const flipNotes = other
+      .filter(d => STACKDEPTH_DATA[d].has(s.notation) !== inRange)
+      .map(d => 'at ' + d + 'bb it would ' + (STACKDEPTH_DATA[d].has(s.notation) ? 'open' : 'fold'));
+    let why = '<b>' + s.notation + '</b> is ' + (inRange ? '' : '<b>not</b> ') + 'in the ' + STACKDEPTH_LABEL[s.depth] + ' CO range.';
+    if (flipNotes.length) why += ' Depth-dependent — ' + flipNotes.join(', ') + '.';
+    if (s.depth === 40 && inRange && !STACKDEPTH_DATA[100].has(s.notation))
+      why += ' Shallow, a straightforward stack-off hand gains value over a speculative one.';
+    if (s.depth === 200 && inRange && !STACKDEPTH_DATA[100].has(s.notation))
+      why += ' Deep, the implied odds on a rare big hand are worth chasing.';
+    if (s.depth === 200 && !inRange && STACKDEPTH_DATA[100].has(s.notation))
+      why += ' Deep, this dominated-adjacent offsuit hand is reverse-implied-odds trouble — fold it here even though it opens at 100bb.';
+    if (s.depth === 40 && !inRange && STACKDEPTH_DATA[100].has(s.notation))
+      why += ' Shallow, set-mining implied odds are gone — this needs deeper stacks to pay off.';
+    return {
+      correct, correctAction,
+      title: correct ? '✓ Correct — ' + correctAction.toUpperCase() : '✗ Not this time — correct play is ' + correctAction.toUpperCase(),
+      html: why,
+      matrix: {
+        layers: [{ set: STACKDEPTH_DATA[s.depth], css: 'in', label: 'Open' }],
+        hero: s.notation,
+        title: 'CO open · ' + STACKDEPTH_LABEL[s.depth] + ' · ' + rangePct(STACKDEPTH_DATA[s.depth]) + '%'
+      },
+      bucket: String(s.depth),
+      tags: { handClass: handClass(s.notation), direction: correct ? null : (action === 'raise' ? 'aggressive' : 'passive') }
+    };
+  }
+};
+
+/* ---------------- 3-Bet Pot (Ch 13) ----------------
+   You 3-bet from the BTN over an earlier open, villain called — a 3-bet pot,
+   range-c-bet or check as the aggressor? Reuses the C-Bet Trainer's board
+   analysis (cbetBoard) but with a DIFFERENT scoring model, because a 3-bet
+   pot's two ranges are shaped differently than a single-raised pot's:
+   - High boards favour the 3-bettor even MORE than in a single-raised pot —
+     a 3-betting range is stuffed with big pairs and Ax, and villain's flat
+     range rarely has premium big cards left after calling a 3-bet with them.
+   - Low/connected boards favour the 3-bettor LESS (often flip to a check) —
+     villain's 3-bet-flatting range is exactly the small pairs and suited
+     connectors that live on those textures, unlike a single-raised caller's
+     wider, more capped range. This is the chapter's central "your range
+     advantage shrinks or grows in the opposite direction" lesson.
+   Simplified heuristic, same objective-by-construction approach as C-Bet
+   (only clear-cut boards are dealt; ambiguous scores are re-dealt). */
+function threeBetPotScore(b) {
+  let s = 0;
+  if (b.hasA) s += 4; else if (b.hasK) s += 3; else if (b.high >= 8) s += 1;
+  if (b.high <= 6) s -= 4;                                  // steeper than single-raised c-bet
+  if (b.paired) s += 2;
+  if (b.monotone) s -= 2; else if (b.twoTone) s -= 1;
+  if (!b.paired) { if (b.span <= 2) s -= 2; else if (b.span <= 4) s -= 1; }
+  return s;
+}
+const TBPOT_OPENERS = ['UTG', 'MP', 'CO'];
+
+MODES.threebetpot = {
+  label: '3-Bet Pot', chapter: 'Ch 13',
+  bucketTitle: 'Accuracy by board type',
+  bucketList: () => ['ace-high','king-high','broadway','paired','low-connected','monotone','middling']
+    .map(k => ({ key: k, label: CBET_FAMILY_LABEL[k].replace(' boards','') })),
+  buttons: () => [
+    { id: 'check', label: 'CHECK',  key: 'c', css: 'btn-call'  },
+    { id: 'bet',   label: 'C-BET ⅔', key: 'b', css: 'btn-raise' }
+  ],
+  deal(params) {
+    const opener = (params && params.opener) || pick(TBPOT_OPENERS);
+    let cards;
+    if (params && params.board) cards = params.board.map(strToCard);
+    else {
+      let tries = 0;
+      do { cards = dealCards(3, []); tries++; }
+      while (Math.abs(threeBetPotScore(cbetBoard(cards))) < 2 && tries < 300);
+    }
+    const seats = {};
+    for (const p of ALL_POS) { if (p === 'BTN') continue; seats[p] = { folded: p !== opener }; }
+    seats[opener] = { folded: false, chip: 'CALLED 3-BET', chipClass: 'chip-call' };
+    return {
+      opener, board: cards,
+      table: {
+        heroPos: 'BTN', board: cards,
+        prompt: opener + ' opens, you 3-bet from the BTN, ' + opener + ' calls. C-bet your range or check?',
+        seats
+      }
+    };
+  },
+  descriptor: s => ({ opener: s.opener, board: s.board.map(cardStr) }),
+  grade(s, action) {
+    const b = cbetBoard(s.board);
+    const rec = threeBetPotScore(b) >= 2 ? 'bet' : 'check';
+    const correct = action === rec;
+    const fam = cbetFamily(b);
+    const rows = [];
+    const mk = (m, t, d) => rows.push('<div style="margin-bottom:5px"><b>' +
+      (m === 'y' ? '<span style="color:var(--green)">✓</span>' : m === 'n' ? '<span style="color:var(--red)">✗</span>' : '<span style="color:var(--gold)">~</span>') +
+      ' ' + t + '</b> — ' + d + '</div>');
+    if (b.hasA) mk('y','Range advantage','even bigger than in a single-raised pot — your 3-bet range is stuffed with Ax and big pairs, his flat rarely has much Ace-high left.');
+    else if (b.hasK) mk('y','Range advantage','K-high still favours your 3-bet range heavily.');
+    else if (b.high >= 8) mk('~','Range advantage','a broadway card gives a modest edge, less pronounced than on Ax/Kx.');
+    else mk('n','Range advantage','low board — this is exactly where his 3-bet-<i>flatting</i> range lives (small pairs, suited connectors). Weaker range advantage than the same board in a single-raised pot — check more.');
+    if (b.paired) mk('y','Texture','paired and dry — range-bet, nobody\'s calling range improves.');
+    else if (b.monotone) mk('n','Texture','monotone — flushes and flush draws are live, dynamic: check more.');
+    else if (b.span <= 4) mk('n','Texture','connected — straights and draws abound, dynamic board.');
+    else mk('y','Texture','dry and disconnected — a clean range-betting texture.');
+    const boardStr = s.board.map(c => c.rank + SUIT_GLYPH[c.suit]).join(' ');
+    const teach = rec === 'bet'
+      ? 'Range-c-bet — in a 3-bet pot this texture is even more skewed to your range than usual.'
+      : 'Check — 3-bet pots flip the usual read on low/connected boards: his flatting range crushes this one, so give up more often than you would as a single-raiser.';
+    return {
+      correct, correctAction: rec,
+      title: correct ? '✓ Correct — ' + (rec === 'bet' ? 'C-BET' : 'CHECK') : '✗ Not this time — correct play is ' + (rec === 'bet' ? 'C-BET' : 'CHECK'),
+      html: '<b>' + boardStr + '</b> (vs ' + s.opener + ' flat) — ' + teach,
+      extra: { title: '3-bet pot factors', html: rows.join('') },
+      matrix: null,
+      bucket: fam,
+      tags: { handClass: fam, direction: correct ? null : (action === 'bet' ? 'aggressive' : 'passive') }
+    };
+  }
+};
+
 /* ================================================================
    Grind Loop: Leitner review, tiers, leak finder, badges
    ================================================================ */
 const REVIEW_GAP = { 1: 5, 2: 12 };   // answers until due, per box
-const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 7/8', barrel: 'Ch 12', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5' };
+const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 7/8', barrel: 'Ch 12', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
 const MODE_GROUPS = [
-  { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef'] },
-  { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'valuebet'] },
+  { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef', 'stackdepth'] },
+  { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'valuebet', 'threebetpot'] },
   { label: 'Combos',   modes: ['combos'] }
 ];
 const MODE_INFO = {
@@ -3153,10 +3413,12 @@ const MODE_INFO = {
   sizing:   { title: 'Sizing', text: 'Kapitel 3 &amp; 10.5 — mechanisches Sizing: ISO größer mit mehr Limpern oder OOP; 3-Bet 3x in Position, 4x OOP, +1 Open pro Caller.' },
   vs3bet:   { title: 'vs 3-Bet', text: 'Preflop Bibles 4-Bet-Kapitel — verteidige deinen Open gegen ein 3-Bet: 4-Bet zum Value, 4-Bet-Bluff mit Blockern, Call, oder Fold.' },
   blinddef: { title: 'Blind Def', text: 'Preflop Bibles Blind-Defense-Kapitel — SB spielt 3-bet-or-fold; BB verteidigt breiter mit einer 3-Bet- und Call-Mischung.' },
+  stackdepth: { title: 'Stack Depth', text: 'Kapitel 14 — dieselbe Position (CO), aber die Stack-Tiefe ändert die Range: shallow (40bb) braucht weniger Implied Odds, deep (200bb) mehr — spekulative Hände und Offsuit-Broadways tauschen den Platz.' },
   cbet:     { title: 'C-Bet', text: 'Kapitel 4 — Continuation-Bet-Entscheidung nach Range-Vorteil und Board-Textur. Gib den Auto-C-Bet auf Boards auf, die den Caller begünstigen.' },
   flopdef:  { title: 'Flop Defense', text: 'Kapitel 7–8 — BB gegen einen Flop-C-Bet verteidigen: Made-Hand-Stufen, Draws und ihre Outs, und der Preis, den du bekommst.' },
   barrel:   { title: 'Turn Barrel', text: 'Kapitel 12 — zweite Patrone auf dem Turn: gute vs. schlechte Turn-Karten, und Showdown-Value nicht wegbrennen.' },
   valuebet: { title: 'Value Bet', text: 'Kapitel 5 — wie viele Straßen eine Made Hand wert ist, angepasst an den Gegnertyp (Station/Nit), plus das seltene Slowplay.' },
+  threebetpot: { title: '3-Bet Pot', text: 'Kapitel 13 — C-Betten als 3-Better: dein Range-Vorteil ist auf hohen Boards noch größer als sonst, aber auf tiefen/verbundenen Boards schwächer, weil die Flatting-Range des Gegners genau dort wohnt.' },
   combos:   { title: 'Combos', text: 'Kapitel 9 — Combos zählen (Paare=6, Suited=4, Offsuit=12) und wie Card Removal (Blocker) sie schrumpft.' }
 };
 
@@ -3313,6 +3575,10 @@ const BADGES = [
     test: () => (stats.modes.valuebet || {}).correct >= 20 },
   { id: 'blinddef20',icon: '🏰', name: 'Blind Fortress', blurb: '20 correct answers in Blind Defense',
     test: () => (stats.modes.blinddef || {}).correct >= 20 },
+  { id: 'stackdepth20', icon: '📏', name: 'Depth Chart',  blurb: '20 correct answers in Stack Depth',
+    test: () => (stats.modes.stackdepth || {}).correct >= 20 },
+  { id: 'tbpot20',   icon: '⚖️', name: 'Balanced Aggressor', blurb: '20 correct answers in 3-Bet Pot',
+    test: () => (stats.modes.threebetpot || {}).correct >= 20 },
   { id: 'gold3',     icon: '🎓', name: 'Level 3 Scholar', blurb: 'Unlocked difficulty 3 in a tiered drill',
     test: () => Object.values(stats.grind.tierLevel || {}).some(v => v >= 3) },
   { id: 'mastered5', icon: '🗂️', name: 'Spaced Out',     blurb: '5 review spots mastered',
@@ -3560,13 +3826,59 @@ function renderProgress() {
           (CHAPTER_REF[mid] || '') + '</span></div>'; }).join('')
     : '<div class="prog-empty">Noch keine Leaks erkannt — weiter so!</div>';
 }
-function openProgress() { renderProgress(); $('progress').classList.add('show'); }
+function openProgress() { renderProgress(); $('progress').classList.add('show'); $('backup-msg').textContent = ''; }
 function closeProgress() { $('progress').classList.remove('show'); }
 $('btn-progress').addEventListener('click', openProgress);
 $('progress-close').addEventListener('click', closeProgress);
 $('progress').addEventListener('click', e => { if (e.target.id === 'progress') closeProgress(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && $('progress').classList.contains('show')) closeProgress();
+});
+
+/* ----- backup: export / import stats as a JSON file ----- */
+function backupMsg(text, ok) {
+  const el = $('backup-msg');
+  el.textContent = text;
+  el.className = 'backup-msg' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+}
+$('btn-export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(stats, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = 'preflop-trainer-backup-' + date + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  backupMsg('✓ Heruntergeladen.', true);
+});
+$('btn-import').addEventListener('click', () => $('import-file').click());
+$('import-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';   // allow re-selecting the same file next time
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed;
+    try { parsed = JSON.parse(reader.result); }
+    catch { backupMsg('✗ Das ist keine gültige Backup-Datei.', false); return; }
+    if (!parsed || parsed.version !== 2 || typeof parsed.modes !== 'object') {
+      backupMsg('✗ Diese Datei sieht nicht wie ein Preflop-Trainer-Backup aus.', false);
+      return;
+    }
+    if (!confirm('Aktuellen Fortschritt auf diesem Gerät mit der importierten Sicherung überschreiben? Das kann nicht rückgängig gemacht werden.')) return;
+    stats = parsed;
+    save();
+    if (stats.lastMode && MODES[stats.lastMode]) activeModeId = stats.lastMode;
+    renderTabs(); renderStats(); renderBuckets(); renderFocusBar(); renderSpeedBar();
+    renderLeaks(); renderTrophies(); renderProgress();
+    nextSpot();
+    backupMsg('✓ Wiederhergestellt.', true);
+  };
+  reader.onerror = () => backupMsg('✗ Datei konnte nicht gelesen werden.', false);
+  reader.readAsText(file);
 });
 
 /* ---------------- boot ---------------- */
@@ -3576,6 +3888,7 @@ renderTabs();
 renderStats();
 renderBuckets();
 renderFocusBar();
+renderSpeedBar();
 renderLeaks();
 renderTrophies();
 nextSpot();
