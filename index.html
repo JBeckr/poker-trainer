@@ -420,6 +420,13 @@
   }
   .seat.folded { opacity: 0.38; }
   .seat.folded .badge::after { content: " · FOLD"; color: var(--muted); font-weight: 400; }
+  .seat .stack {
+    font-size: 0.58rem;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
   .seat.hero .badge {
     background: var(--gold);
     color: #201a05;
@@ -804,6 +811,7 @@
     .felt { inset: 24px 14px; border-width: 7px; }
     .seat { width: 66px; gap: 2px; }
     .seat .badge { font-size: 0.58rem; padding: 2px 7px; }
+    .seat .stack { font-size: 0.52rem; }
     .card { width: 40px; height: 56px; }
     .card .rank { font-size: 1.1rem; }
     .card .suit { font-size: 0.95rem; }
@@ -1137,7 +1145,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '1.1.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '1.2.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1220,6 +1228,13 @@ function renderTable(spec) {
       seat.appendChild(backs);
     }
     seat.appendChild(badge);
+
+    const stackEl = document.createElement('div');
+    stackEl.className = 'stack';
+    const stackBB = info.stackBB != null ? info.stackBB : (spec.stackBB != null ? spec.stackBB : 100);
+    stackEl.textContent = stackBB + 'bb';
+    seat.appendChild(stackEl);
+
     tableEl.appendChild(seat);
 
     if (pos === 'BTN') {
@@ -3311,7 +3326,8 @@ MODES.stackdepth = {
       table: {
         heroPos: 'CO', heroCards: cards,
         prompt: 'Folded to you in the CO — effective stack ' + depth + 'bb. Your move?',
-        seats: foldedToHero('CO')
+        seats: foldedToHero('CO'),
+        stackBB: depth
       }
     };
   },
