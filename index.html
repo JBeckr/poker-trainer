@@ -1145,7 +1145,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '1.3.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '1.4.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2444,65 +2444,147 @@ const CBET_FAMILY_LABEL = {
 };
 const CBET_OPENERS = ['MP', 'CO', 'BTN'];
 
+// Ch4's light-c-bet decision is fundamentally about ONE HAND's equity and showdown
+// value against Villain's calling range — board texture is only one of several
+// factors, not the whole story (that whole-range framing belongs to Ch13's 3-bet
+// pots, not this chapter). Strong made hands (monster/overpair/top pair with a
+// good kicker) are explicitly out of scope here per the book ("Chapter 5 on value
+// betting will cover the former, for now our focus is the light c-bet") and are
+// excluded from the dealing pool below so this mode and Value Bet don't overlap.
+function cbetHandDecision(cls, b, villainType, overs) {
+  // Figure 20's own shortcut: equity ≈ outs × 4. ~3 outs per live overcard matches
+  // the book's own worked numbers ("two overcards for six outs", "two overs + a
+  // gutshot for ten outs").
+  const outsTotal = cls.outs + overs * 3;
+  const eqPct = Math.min(outsTotal * 4, 60);
+  const texScore = cbetScore(b);
+
+  if (cls.madeTier === 'air') {
+    if (villainType === 'station') {
+      if (outsTotal >= 8)
+        return { act: 'bet', diff: 2, why: 'No pair, but ' + outsTotal + ' outs (≈' + eqPct + '%) is real equity even against a station who rarely folds — bet to build a pot for the times you hit.' };
+      return { act: 'check', diff: 1, why: 'No pair and barely any equity — a station gives almost no fold equity, so there\'s nothing to gain by betting. Check.' };
+    }
+    const bonus = villainType === 'nit' ? 2 : 0;
+    const score = texScore + bonus;
+    if (score >= 2 || outsTotal >= 8)
+      return { act: 'bet', diff: 1, why: 'No showdown value, but ' + (outsTotal >= 8 ? outsTotal + ' outs (≈' + eqPct + '%) and ' : '') + 'a board and opponent that fold enough — bet for fold equity' + (outsTotal >= 8 ? ' and improvement chances' : '') + '.' };
+    if (score >= 0)
+      return { act: 'bet', diff: villainType === 'nit' ? 1 : 2, why: 'No showdown value, but the board and player type give just enough fold equity to make this a light c-bet.' };
+    return { act: 'check', diff: score <= -3 ? 1 : 2, why: 'No showdown value, little equity, and a board that favours the caller — betting here just burns money. Check and give up.' };
+  }
+
+  // Hero has a pair (weak/middle/top with a weak kicker) — Ch4's SDV spectrum
+  if (villainType === 'station')
+    return { act: 'check', diff: 2, why: 'You have ' + cls.madeLabel + ', but a station calls anyway and won\'t fold the overcards you\'d be "protecting" against — there\'s no value and no protection in betting here. Check and realise your equity for free.' };
+  const vulnerable = cls.drawTier !== 'none' || b.twoTone || b.monotone || (!b.paired && b.span <= 4);
+  if (vulnerable)
+    return { act: 'bet', diff: 1, why: 'You have ' + cls.madeLabel + ' — vulnerable showdown value on this texture. Bet now for protection before a scare card arrives, and to fold out the overcards that would otherwise catch up.' };
+  if (villainType === 'nit' && texScore >= -1)
+    return { act: 'bet', diff: 3, why: 'You have ' + cls.madeLabel + ' with stable showdown value — normally a check, but a nit folds enough of his air here that a small bet picks up extra pots almost for free.' };
+  return { act: 'check', diff: 2, why: 'You have ' + cls.madeLabel + ' — stable showdown value. Few turns hurt it and Villain isn\'t folding hands with real equity, so betting risks money for nothing. Check and take the free showdown.' };
+}
+function cbetHandFamily(cls, b, overs) {
+  if (cls.madeTier === 'air') {
+    const outsTotal = cls.outs + overs * 3;
+    return outsTotal >= 6 ? 'air-strong-equity' : 'air-weak-equity';
+  }
+  const vulnerable = cls.drawTier !== 'none' || b.twoTone || b.monotone || (!b.paired && b.span <= 4);
+  return vulnerable ? 'vulnerable-pair' : 'stable-pair';
+}
+
 MODES.cbet = {
-  label: 'C-Bet', chapter: 'Ch 4',
-  bucketTitle: 'Accuracy by board type',
-  bucketList: () => ['ace-high','king-high','broadway','paired','low-connected','monotone','middling']
-    .map(k => ({ key: k, label: CBET_FAMILY_LABEL[k].replace(' boards','') })),
+  label: 'C-Bet', chapter: 'Ch 4', tiered: true,
+  bucketTitle: 'Accuracy by hand class',
+  bucketList: () => ['air-strong-equity','air-weak-equity','vulnerable-pair','stable-pair']
+    .map(k => ({ key: k, label: k.replace(/-/g, ' ') })),
   buttons: () => [
     { id: 'check', label: 'CHECK',  key: 'c', css: 'btn-call'  },
     { id: 'bet',   label: 'C-BET ⅓', key: 'b', css: 'btn-raise' }
   ],
   deal(params) {
-    const opener = (params && params.opener) || pick(CBET_OPENERS);
-    let cards;
-    if (params && params.board) cards = params.board.map(strToCard);
-    else {
+    const maxDiff = (params && params.maxDiff) || 3;
+    let opener, heroCards, board, villainType, cls, overs, dec;
+    if (params && params.board) {
+      opener = params.opener; heroCards = params.hero.map(strToCard);
+      board = params.board.map(strToCard); villainType = params.villainType;
+      cls = handClassFlop(heroCards, board);
+      const topBoardVal = Math.max(...board.map(CVAL));
+      overs = heroCards.filter(c => CVAL(c) > topBoardVal).length;
+      dec = cbetHandDecision(cls, cbetBoard(board), villainType, overs);
+    } else {
       let tries = 0;
-      do { cards = dealCards(3, []); tries++; }
-      while (Math.abs(cbetScore(cbetBoard(cards))) < 2 && tries < 300);
+      while (tries++ < 600) {
+        opener = pick(CBET_OPENERS);
+        heroCards = cardsForNotation(pick([...RANGES[opener]]));
+        board = dealCards(3, heroCards);
+        cls = handClassFlop(heroCards, board);
+        // Ch4's own scope excludes value hands -- that's Value Bet mode's job
+        if (cls.madeTier === 'monster' || cls.madeTier === 'overpair' || (cls.madeTier === 'top' && cls.kickerGood)) continue;
+        const topBoardVal = Math.max(...board.map(CVAL));
+        overs = heroCards.filter(c => CVAL(c) > topBoardVal).length;
+        villainType = maxDiff >= 2 ? pick(['station', 'reg', 'nit']) : 'reg';
+        dec = cbetHandDecision(cls, cbetBoard(board), villainType, overs);
+        if (dec.diff > maxDiff) continue;
+        const fam = cbetHandFamily(cls, cbetBoard(board), overs);
+        if (fam === 'air-weak-equity' && Math.random() < 0.5) continue;   // trim the most trivial "just check" spot
+        break;
+      }
     }
+    const potBB = 5.5, betBB = 2;
     const seats = {};
     for (const p of ALL_POS) { if (p === opener) continue; seats[p] = { folded: p !== 'BB' }; }
-    seats['BB'] = { folded: false, chip: 'CALL', chipClass: 'chip-call' };
+    seats['BB'] = { folded: false, chip: VILLAIN_TYPES[villainType].tag + ' called', chipClass: 'chip-call' };
     return {
-      opener, board: cards,
+      opener, heroCards, board, villainType, cls, overs, dec, potBB, betBB,
       table: {
-        heroPos: opener, board: cards,
-        prompt: 'You open ' + opener + ', BB calls. C-bet your range or check?',
+        heroPos: opener, heroCards, board,
+        prompt: 'You open ' + opener + ', a ' + VILLAIN_TYPES[villainType].tag.toLowerCase() + ' calls. C-bet or check?',
         seats
       }
     };
   },
-  descriptor: s => ({ opener: s.opener, board: s.board.map(cardStr) }),
+  descriptor: s => ({ opener: s.opener, hero: s.heroCards.map(cardStr), board: s.board.map(cardStr), villainType: s.villainType }),
   grade(s, action) {
-    const b = cbetBoard(s.board);
-    const rec = cbetScore(b) >= 2 ? 'bet' : 'check';
+    const rec = s.dec.act;
     const correct = action === rec;
-    const fam = cbetFamily(b);
-    // factor checklist
+    const b = cbetBoard(s.board);
+    const fam = cbetHandFamily(s.cls, b, s.overs);
+    const vt = VILLAIN_TYPES[s.villainType];
+    // factor checklist, matching Ch4's own factor table
     const rows = [];
     const mk = (m, t, d) => rows.push('<div style="margin-bottom:5px"><b>' +
       (m === 'y' ? '<span style="color:var(--green)">✓</span>' : m === 'n' ? '<span style="color:var(--red)">✗</span>' : '<span style="color:var(--gold)">~</span>') +
       ' ' + t + '</b> — ' + d + '</div>');
-    if (b.hasA) mk('y','Range advantage','the Ace hits your opening range far more than the BB\'s defending range.');
-    else if (b.hasK) mk('y','Range advantage','the King favours you — your range has more strong Kx.');
-    else if (b.high >= 8) mk('~','Range advantage','a broadway card gives you a slight edge.');
-    else mk('n','Range advantage','low board — it connects better with the BB\'s calls (suited connectors, small pairs).');
-    if (b.paired) mk('y','Texture','paired and dry — nobody connects, ideal to bet the whole range.');
-    else if (b.monotone) mk('n','Texture','monotone — the BB holds flushes and flush draws, dynamic: check more.');
-    else if (b.span <= 4) mk('n','Texture','connected — lots of straights and draws for the BB, dynamic board.');
-    else mk('y','Texture','dry and disconnected — a good range-betting texture.');
+    if (b.hasA) mk('y','Board texture','the Ace favours your opening range over the BB\'s calling range.');
+    else if (b.hasK) mk('y','Board texture','the King favours you.');
+    else if (b.high >= 8) mk('~','Board texture','a broadway card gives a slight edge.');
+    else mk('n','Board texture','low board — connects better with the BB\'s flatting range.');
+    if (b.paired) mk('y','Board texture','also paired and dry — nobody connects here.');
+    else if (b.monotone) mk('n','Board texture','also monotone — flush and flush-draw territory for the BB.');
+    else if (b.span <= 4) mk('n','Board texture','also connected — lots of straights and draws live here.');
+    const outsTotal = s.cls.outs + s.overs * 3;
+    const eqPct = Math.min(outsTotal * 4, 60);
+    if (outsTotal >= 8) mk('y','Equity', outsTotal + ' outs (≈' + eqPct + '%) when called — real incentive to bet even without fold equity.');
+    else if (outsTotal >= 4) mk('~','Equity', outsTotal + ' outs (≈' + eqPct + '%) — some help if called.');
+    else mk('n','Equity','almost no outs when called — this bet lives or dies on fold equity alone.');
+    if (s.cls.madeTier === 'air') mk('n','Showdown value','none — a pure fold-equity/semi-bluff decision.');
+    else {
+      const vulnerable = s.cls.drawTier !== 'none' || b.twoTone || b.monotone || (!b.paired && b.span <= 4);
+      if (vulnerable) mk('~','Showdown value', s.cls.madeLabel + ', vulnerable — plenty of turns make it worse.');
+      else mk('y','Showdown value', s.cls.madeLabel + ', stable — few turns hurt it, fine to check and take it to showdown for free.');
+    }
+    mk(s.villainType === 'nit' ? 'y' : s.villainType === 'station' ? 'n' : '~', 'Player type',
+      vt.blurb + (s.villainType === 'station' ? ' — little fold equity, and a "protection" bet needs folds that won\'t come.' : s.villainType === 'nit' ? ' — extra fold equity for a light c-bet.' : ''));
     const boardStr = s.board.map(c => c.rank + SUIT_GLYPH[c.suit]).join(' ');
-    const teach = rec === 'bet'
-      ? 'A small range c-bet (~⅓) turns your edge into EV and denies the BB cheap equity.'
-      : 'Give up here — the BB\'s range is fine on this texture, so an auto-c-bet just burns EV. Checking is the fix for the "I c-bet everything" leak.';
     return {
       correct, correctAction: rec,
       title: correct ? '✓ Correct — ' + (rec === 'bet' ? 'C-BET' : 'CHECK')
                      : '✗ Not this time — correct play is ' + (rec === 'bet' ? 'C-BET' : 'CHECK'),
-      html: '<b>' + boardStr + '</b> — ' + teach,
-      extra: { title: 'Light c-bet factors', html: rows.join('') },
+      html: '<b>' + boardStr + '</b> — ' + s.dec.why,
+      extra: { title: 'Light c-bet factors', html: rows.join('') +
+        '<div style="margin-top:8px;font-size:1.1rem">' + s.heroCards.map(cardSpan).join(' &nbsp; ') +
+        ' <span style="color:var(--muted);font-size:0.8rem">' + s.cls.madeLabel + '</span></div>' },
       matrix: null,
       bucket: fam,
       tags: { handClass: fam, direction: correct ? null : (action === 'bet' ? 'aggressive' : 'passive') }
@@ -2510,12 +2592,15 @@ MODES.cbet = {
   }
 };
 
-/* ---------------- Flop Defense vs C-Bet (Ch 7-8) ----------------
+/* ---------------- Flop Defense vs C-Bet (Ch 8, "Open Action Spots") ----------------
    You defended the BB vs a BTN open and face a flop c-bet. Fold / Call / Raise
    with your actual hand, graded by a hand classifier (made-hand tiers, kicker,
    flush & straight draws, outs) + a decision model from the book's defend
    framework. Only clear-cut spots are shown. Attacks the #1 population leak:
-   over-folding the big blind to c-bets. */
+   over-folding the big blind to c-bets.
+   Note: Ch7 ("End of Action Spots" — river call-or-fold as the caller, using
+   required-equity milestones and the four bluff-catching questions) is a
+   distinct, still-uncovered skill; this mode is Ch8's open-action defense only. */
 const CVAL = c => 12 - RI[c.rank];                       // A=12 … 2=0
 // distinct completing ranks for a straight, given a set of rank values
 function straightOuts(vals) {
@@ -2588,34 +2673,61 @@ function handClassFlop(hero, board) {
   let drawTier = 'none';
   if (outs >= 12) drawTier = 'combo'; else if (outs >= 8) drawTier = 'strong'; else if (outs === 4) drawTier = 'weak';
 
-  return { madeTier, madeLabel, kickerGood, flush, straight, outs, drawTier };
+  return { madeTier, madeLabel, kickerGood, flush, straight, outs, drawTier, isPP };
 }
 function flopDefFamily(cls) {
   if (cls.madeTier === 'monster') return 'monster';
   if (cls.drawTier === 'combo') return 'combo-draw';
   if (cls.drawTier === 'strong') return 'strong-draw';
-  if (cls.madeTier === 'overpair' || cls.madeTier === 'top') return 'top-pair';
-  if (cls.madeTier === 'middle' || cls.madeTier === 'weak') return 'weak-pair';
+  if (cls.madeTier === 'overpair' || (cls.madeTier === 'top' && cls.kickerGood)) return 'top-pair';
+  if (cls.isPP && (cls.madeTier === 'middle' || cls.madeTier === 'weak')) return 'dreaded-underpair';
+  if (cls.madeTier === 'top' || cls.madeTier === 'middle' || cls.madeTier === 'weak') return 'weak-pair';
   if (cls.drawTier === 'weak') return 'weak-draw';
   return 'air';
 }
-function flopDefDecision(cls, f) {
-  const reqPct = Math.round(f / (1 + 2 * f) * 100);
+// Ch8's central lesson: naive required-equity (pot odds alone) is a "categorical
+// error" in an OPEN action spot — later streets mean much of that raw equity is
+// "ghost equity" that never sees a profitable showdown. The book's own fix is to
+// count OUTS WHEN BEHIND instead: a pocket pair under top board (the "dreaded
+// underpair") only redraws to a set, 2 outs; a hand that paired WITH a board card
+// (top/middle/bottom pair) has ~5 outs and is the hand whose defence keeps Hero's
+// range from being exploitable ("folding this is to wave the white flag"). Draws
+// lean on implied odds / future fold equity — both driven far more by villain type
+// than by the bet's raw size, per Ch8.2's Fish-vs-Reg examples (Hand 60 vs Hand 61/62).
+const CBETTOR_LABEL = { station: 'loose, wide-betting villain', reg: 'Reg', nit: 'tight, value-only villain' };
+const CBETTOR_TAG = { station: 'WIDE C-BET', reg: 'C-BET', nit: 'TIGHT C-BET' };
+function flopDefDecision(cls, f, villainType) {
   const eqPct = Math.round(cls.outs * 4);
   if (cls.madeTier === 'monster')
     return { act: 'raise', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — strong value; raise to build the pot and charge draws.' };
   if (cls.drawTier === 'combo')
-    return { act: 'raise', diff: 3, why: 'A <b>combo draw (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b> — raise as a semi-bluff; you often hold more equity than his made hands.' };
-  if (cls.drawTier === 'strong')
-    return { act: 'call', diff: 1, why: 'A <b>' + (cls.flush === 'fd' ? 'flush draw' : 'open-ended draw') + ' (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b> — well above the ' + reqPct + '% you need; call and realise it.' };
-  if (cls.madeTier === 'overpair' || cls.madeTier === 'top')
-    return { act: 'call', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — enough to continue, too thin to raise: call and keep his bluffs in.' };
-  if (cls.madeTier === 'middle' || cls.madeTier === 'weak') {
-    if (f <= 0.4) return { act: 'call', diff: 2, why: 'You have <b>' + cls.madeLabel + '</b> vs a small bet — a cheap bluff-catch that beats his misses.' };
-    return { act: 'fold', diff: 2, why: 'You have <b>' + cls.madeLabel + '</b> vs a big bet — not enough at this price, fold.' };
+    return { act: 'raise', diff: 3, why: 'A <b>combo draw (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b> — raise as a semi-bluff; out of position, realising this much equity by just calling is much harder, and you often hold more equity than his made hands anyway.' };
+  if (cls.madeTier === 'overpair' || (cls.madeTier === 'top' && cls.kickerGood))
+    return { act: 'call', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — comfortably ahead of his continuing range, too thin relative to it to raise for value: call and keep his bluffs in.' };
+  if (cls.madeTier === 'top' || cls.madeTier === 'middle' || cls.madeTier === 'weak') {
+    if (cls.isPP) {
+      // the dreaded underpair — only 2 outs to a set when behind, mostly ghost equity
+      if (villainType === 'station')
+        return { act: 'call', diff: 3, why: 'The dreaded underpair — only 2 outs to a set when behind. Normally a fold, but this loose bettor\'s range is wide and weak enough here that you\'re often ahead of what he bets; the little true equity you do have is worth more against this much air.' };
+      return { act: 'fold', diff: villainType === 'nit' ? 1 : 2, why: 'The dreaded underpair — only 2 outs to a set when behind. Out of position with poor implied odds, most of your raw equity here is ghost equity that never sees a profitable showdown. Fold' + (villainType === 'nit' ? ' — especially against a tight, value-only bettor' : '') + '.' };
+    }
+    // pair using a board card -- ~5 outs when behind, the "folding = waving the white flag" hand
+    if (villainType === 'nit')
+      return { act: 'fold', diff: 3, why: 'You have <b>' + cls.madeLabel + '</b>, but a tight, value-only bettor\'s range crushes this here — not enough of it is behind or foldable. Fold.' };
+    return { act: 'call', diff: villainType === 'station' ? 1 : 2, why: 'You have <b>' + cls.madeLabel + '</b> with real outs when behind (~5, not the dreaded underpair\'s 2) — folding this whole class of hand would make your defending range exploitable. Call and keep your range uncapped.' };
   }
-  if (cls.drawTier === 'weak')
-    return { act: 'fold', diff: 2, why: 'Only a <b>gutshot (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b> — below the ' + reqPct + '% you need, fold.' };
+  if (cls.drawTier === 'strong') {
+    if (villainType === 'nit' && f > 0.6)
+      return { act: 'fold', diff: 3, why: 'A <b>' + (cls.flush === 'fd' ? 'flush draw' : 'open-ended draw') + '</b>, but this big a bet from a tight, value-only bettor means little future fold equity and a narrow, strong continuing range — the implied odds don\'t make up for the price out of position.' };
+    return { act: 'call', diff: 1, why: 'A <b>' + (cls.flush === 'fd' ? 'flush draw' : 'open-ended draw') + ' (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b>' + (villainType === 'station' ? ' — a loose bettor pays this off big and keeps betting worse, excellent implied odds even out of position' : ' — plenty of equity plus implied odds to call, even out of position') + '.' };
+  }
+  if (cls.drawTier === 'weak') {
+    if (villainType === 'station')
+      return { act: 'fold', diff: 2, why: 'Just a <b>gutshot (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b> — a villain who keeps betting regardless of texture gives you no future fold equity, and the rare made straight rarely makes up for such a thin draw out of position. Fold.' };
+    if (villainType === 'nit')
+      return { act: 'call', diff: 3, why: 'Just a <b>gutshot</b>, but a tight bettor gives up on a lot of turns once you show resistance — future fold equity plus the rare made straight is enough to continue here.' };
+    return { act: 'fold', diff: 2, why: 'Only a <b>gutshot (' + cls.outs + ' outs ≈ ' + eqPct + '%)</b> — too thin out of position without a specific read on villain type to expect implied or future fold equity to make up the difference. Fold.' };
+  }
   return { act: 'fold', diff: 1, why: '<b>No pair, no draw</b> — give up.' };
 }
 // BB flatting range vs a BTN open (from the GM vs-open chart's continuing hands)
@@ -2627,10 +2739,10 @@ const suitColor = { s: '#c9d2e0', h: '#ff8a84', d: '#7fb0ff', c: '#6fd89a' };
 const cardSpan = c => '<span style="color:' + suitColor[c.suit] + '">' + c.rank + SUIT_GLYPH[c.suit] + '</span>';
 
 MODES.flopdef = {
-  label: 'Flop Defense', chapter: 'Ch 7/8', tiered: true,
+  label: 'Flop Defense', chapter: 'Ch 8', tiered: true,
   bucketTitle: 'Accuracy by hand class',
-  bucketList: () => ['monster','top-pair','weak-pair','combo-draw','strong-draw','weak-draw','air']
-    .map(k => ({ key: k, label: k.replace('-', ' ') })),
+  bucketList: () => ['monster','top-pair','weak-pair','dreaded-underpair','combo-draw','strong-draw','weak-draw','air']
+    .map(k => ({ key: k, label: k.replace(/-/g, ' ') })),
   buttons: () => [
     { id: 'fold',  label: 'FOLD',  key: 'f', css: 'btn-fold'  },
     { id: 'call',  label: 'CALL',  key: 'c', css: 'btn-call'  },
@@ -2639,13 +2751,13 @@ MODES.flopdef = {
   deal(params) {
     const opener = 'BTN', hero = 'BB';
     const maxDiff = (params && params.maxDiff) || 3;
-    let heroCards, board, f, cls, dec;
+    let heroCards, board, f, villainType, cls, dec;
     if (params && params.board) {
       heroCards = params.hero.map(strToCard);
       board = params.board.map(strToCard);
-      f = params.f;
+      f = params.f; villainType = params.villainType;
       cls = handClassFlop(heroCards, board);
-      dec = flopDefDecision(cls, f);
+      dec = flopDefDecision(cls, f, villainType);
     } else {
       let tries = 0;
       while (true) {
@@ -2653,7 +2765,8 @@ MODES.flopdef = {
         board = dealCards(3, heroCards);
         f = pick([0.33, 0.75]);
         cls = handClassFlop(heroCards, board);
-        dec = flopDefDecision(cls, f);
+        villainType = maxDiff >= 2 ? pick(['station', 'reg', 'nit']) : 'reg';
+        dec = flopDefDecision(cls, f, villainType);
         tries++;
         if (tries >= 400) break;
         if (dec.diff > maxDiff) continue;
@@ -2664,17 +2777,17 @@ MODES.flopdef = {
     const potBB = 5.5, betBB = Math.round(f * potBB * 10) / 10;
     const seats = {};
     for (const p of ALL_POS) { if (p === hero) continue; seats[p] = { folded: p !== opener }; }
-    seats[opener] = { folded: false, chip: 'C-BET ' + betBB + 'bb', chipClass: 'chip-raise' };
+    seats[opener] = { folded: false, chip: CBETTOR_TAG[villainType] + ' ' + betBB + 'bb', chipClass: 'chip-raise' };
     return {
-      opener, hero, heroCards, board, f, cls, dec, potBB, betBB,
+      opener, hero, heroCards, board, f, villainType, cls, dec, potBB, betBB,
       table: {
         heroPos: hero, heroCards, board,
-        prompt: 'You defend BB vs ' + opener + '. C-bet ' + betBB + 'bb into ' + potBB + 'bb — your move?',
+        prompt: 'You defend BB vs ' + opener + ' — a ' + CBETTOR_LABEL[villainType] + ' bets ' + betBB + 'bb into ' + potBB + 'bb. Your move?',
         seats
       }
     };
   },
-  descriptor: s => ({ opener: s.opener, hero: s.heroCards.map(cardStr), board: s.board.map(cardStr), f: s.f }),
+  descriptor: s => ({ opener: s.opener, hero: s.heroCards.map(cardStr), board: s.board.map(cardStr), f: s.f, villainType: s.villainType }),
   grade(s, action) {
     const rec = s.dec.act;
     const correct = action === rec;
@@ -2686,15 +2799,18 @@ MODES.flopdef = {
       : (s.cls.flush === 'fd' ? 'flush draw' : '') + (s.cls.flush === 'fd' && s.cls.straight !== 'none' ? ' + ' : '') +
         (s.cls.straight === 'oesd' ? 'open-ender' : s.cls.straight === 'gutshot' ? 'gutshot' : '') +
         ' (' + s.cls.outs + ' outs)';
+    const outsWhenBehind = s.cls.isPP && (s.cls.madeTier === 'middle' || s.cls.madeTier === 'weak') ? 2
+      : (s.cls.madeTier === 'top' || s.cls.madeTier === 'middle' || s.cls.madeTier === 'weak') ? 5 : null;
     return {
       correct, correctAction: rec,
       title: correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec],
       html: s.dec.why + '<br><span style="color:var(--muted)">Board ' + boardStr +
-            ' · pot odds: ' + s.betBB + ' into ' + s.potBB + ' → need ~' + reqPct + '% equity.</span>',
+            ' · pot odds alone: ' + s.betBB + ' into ' + s.potBB + ' → ~' + reqPct + '% equity — but this is an open-action spot, so outs-when-behind and implied/future fold equity matter more than that number by itself.</span>',
       extra: { title: 'Your hand', html:
         '<div style="font-size:1.15rem;margin-bottom:6px">' + s.heroCards.map(cardSpan).join(' &nbsp; ') + '</div>' +
         '<div><b>' + s.cls.madeLabel + '</b></div>' +
-        '<div style="color:var(--muted);font-size:0.8rem">' + drawTxt + '</div>' },
+        '<div style="color:var(--muted);font-size:0.8rem">' + drawTxt + '</div>' +
+        (outsWhenBehind != null ? '<div style="color:var(--muted);font-size:0.8rem;margin-top:4px">~' + outsWhenBehind + ' outs when behind' + (outsWhenBehind === 2 ? ' — the dreaded underpair' : '') + '</div>' : '') },
       matrix: null,
       bucket: flopDefFamily(s.cls),
       tags: { handClass: flopDefFamily(s.cls),
@@ -2720,11 +2836,16 @@ function turnCardType(flop, turn) {
   };
 }
 const isScareCard = t => t.overcard && t.tv >= 10 && !t.flushy;   // Q/K/A overcard, no flush scare
-function turnBarrelDecision(cls, t, heroCards) {
+// Ch12's Factor 4 (Villain Type): a Reg reads range-strengthening turns and folds
+// accordingly; a Fish/station calls a piece of the board regardless of the card and
+// almost never folds to a bluff with no equity, so pure-air barrels need a Reg (or
+// better, a Nit who already folds too much) — "it's generally a bad idea to bluff
+// too many turn cards vs. Fish" is stated as an explicit rule in the chapter.
+function turnBarrelDecision(cls, t, heroCards, villainType) {
   const eq = cls.outs * 2;                                        // one card to come
   const heroAce = heroCards.some(c => c.rank === 'A');
   if (cls.madeTier === 'monster' || cls.madeTier === 'overpair' || cls.madeTier === 'top')
-    return { act: 'barrel', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — bet for value; there are still worse hands that pay you off.' };
+    return { act: 'barrel', diff: 1, why: 'You have <b>' + cls.madeLabel + '</b> — bet for value; there are still worse hands that pay you off' + (villainType === 'station' ? ', and a station pays this off even bigger' : '') + '.' };
   if (cls.drawTier === 'strong' || cls.drawTier === 'combo')
     return { act: 'barrel', diff: 1, why: 'A <b>' + (cls.flush === 'fd' ? 'flush draw' : 'big draw') + ' (' + cls.outs + ' outs ≈ ' + eq + '% to hit)</b> — barrel as a semi-bluff: you can win now or improve.' };
   // The chapter's headline lesson — kept at level 2 so it is taught early, not gated behind Gold
@@ -2732,11 +2853,17 @@ function turnBarrelDecision(cls, t, heroCards) {
     return { act: 'check', diff: 2, why: 'You have <b>' + cls.madeLabel + '</b> — that is <b>showdown value</b>. Barrelling turns a hand that can win at showdown into a bluff, folding out everything you beat. Check.' };
   if (heroAce && cls.drawTier === 'none')
     return { act: 'check', diff: 2, why: '<b>Ace-high</b> — real showdown value. Firing here only folds out the hands you already beat; take the free showdown.' };
-  if (cls.drawTier === 'weak')
+  if (cls.drawTier === 'weak') {
+    if (villainType === 'nit')
+      return { act: 'barrel', diff: 3, why: 'Only a <b>gutshot (' + cls.outs + ' outs ≈ ' + eq + '%)</b> — thin, but a nit already folds too much, so the fold equity alone makes this bluff worth firing.' };
     return { act: 'check', diff: 2, why: 'Only a <b>gutshot (' + cls.outs + ' outs ≈ ' + eq + '%)</b> — too little equity to keep firing, check.' };
+  }
   if (t.flushy) return { ambiguous: true };
-  if (isScareCard(t))   // pure-air bluffing is the most advanced call here → top level
-    return { act: 'barrel', diff: 3, why: 'Your hand has nothing, but the turn is a <b>range scare card</b> — this overcard hits your opening range and misses his flop-calling range. Fire.' };
+  if (isScareCard(t)) {   // pure-air bluffing is the most advanced call here → top level
+    if (villainType === 'station')
+      return { act: 'check', diff: 1, why: 'Your hand has nothing, and even though the turn looks scary, a station calls with any piece of the board regardless of the card — there is no fold equity to exploit. Don\'t bluff a Fish. Check.' };
+    return { act: 'barrel', diff: villainType === 'nit' ? 2 : 3, why: 'Your hand has nothing, but the turn is a <b>range scare card</b> — this overcard hits your opening range and misses his flop-calling range. Fire' + (villainType === 'nit' ? ', and a nit who already over-folds makes this an even easier bluff' : '') + '.' };
+  }
   if (t.overcard) return { ambiguous: true };                     // J overcard: genuinely mixed
   return { act: 'check', diff: 1, why: '<b>No pair, no draw</b>, and the turn is a blank that changes nothing — give up.' };
 }
@@ -2760,15 +2887,16 @@ MODES.barrel = {
   ],
   deal(params) {
     const maxDiff = (params && params.maxDiff) || 3;
-    let opener, heroCards, flop, turn, cls, t, dec;
+    let opener, heroCards, flop, turn, cls, t, villainType, dec;
     if (params && params.board) {
       opener = params.opener;
       heroCards = params.hero.map(strToCard);
       const b = params.board.map(strToCard);
       flop = b.slice(0, 3); turn = b[3];
+      villainType = params.villainType;
       cls = handClassFlop(heroCards, b);
       t = turnCardType(flop, turn);
-      dec = turnBarrelDecision(cls, t, heroCards);
+      dec = turnBarrelDecision(cls, t, heroCards, villainType);
     } else {
       // Scare-card barrels are naturally ~1% here (you c-bet A/K-high flops, so an
       // overcard rarely arrives). This is a curriculum, not a simulation — deliberately
@@ -2785,7 +2913,9 @@ MODES.barrel = {
         turn = dealCards(1, [...heroCards, ...flop])[0];
         cls = handClassFlop(heroCards, [...flop, turn]);
         t = turnCardType(flop, turn);
-        dec = turnBarrelDecision(cls, t, heroCards);
+        // scare-card bluffs need a villain capable of folding — never force that spot vs a station
+        villainType = maxDiff >= 2 ? (wantScare ? pick(['reg', 'nit']) : pick(['station', 'reg', 'nit'])) : 'reg';
+        dec = turnBarrelDecision(cls, t, heroCards, villainType);
         if (dec.ambiguous) continue;
         if (dec.diff > maxDiff) continue;
         const fam = turnFamily(cls, t, heroCards);
@@ -2797,27 +2927,28 @@ MODES.barrel = {
     const potBB = 9.1, betBB = 6;
     const seats = {};
     for (const p of ALL_POS) { if (p === opener) continue; seats[p] = { folded: p !== 'BB' }; }
-    seats['BB'] = { folded: false, chip: 'CALLED', chipClass: 'chip-call' };
+    seats['BB'] = { folded: false, chip: VILLAIN_TYPES[villainType].tag + ' called', chipClass: 'chip-call' };
     return {
-      opener, heroCards, flop, turn, board: [...flop, turn], cls, t, dec, potBB, betBB,
+      opener, heroCards, flop, turn, board: [...flop, turn], cls, t, villainType, dec, potBB, betBB,
       table: {
         heroPos: opener, heroCards, board: [...flop, turn],
-        prompt: 'You c-bet the flop, BB called. Turn — pot ' + potBB + 'bb. Barrel ' + betBB + 'bb or check?',
+        prompt: 'You c-bet the flop, a ' + VILLAIN_TYPES[villainType].tag.toLowerCase() + ' called. Turn — pot ' + potBB + 'bb. Barrel ' + betBB + 'bb or check?',
         seats
       }
     };
   },
-  descriptor: s => ({ opener: s.opener, hero: s.heroCards.map(cardStr), board: s.board.map(cardStr) }),
+  descriptor: s => ({ opener: s.opener, hero: s.heroCards.map(cardStr), board: s.board.map(cardStr), villainType: s.villainType }),
   grade(s, action) {
     const rec = s.dec.act;
     const correct = action === rec;
     const fam = turnFamily(s.cls, s.t, s.heroCards);
     const turnTxt = s.t.overcard ? 'an overcard to the flop' : s.t.pairsBoard ? 'a board pair' : 'a blank';
+    const vt = VILLAIN_TYPES[s.villainType];
     return {
       correct, correctAction: rec,
       title: correct ? '✓ Correct — ' + rec.toUpperCase() : '✗ Not this time — correct play is ' + rec.toUpperCase(),
       html: s.dec.why + '<br><span style="color:var(--muted)">Turn ' + cardSpan(s.turn) + ' is ' + turnTxt +
-            (s.t.flushy ? ' and puts three to a flush out there' : '') + '.</span>',
+            (s.t.flushy ? ' and puts three to a flush out there' : '') + '. Villain: ' + vt.blurb + '.</span>',
       extra: { title: 'Your hand', html:
         '<div style="font-size:1.15rem;margin-bottom:6px">' + s.heroCards.map(cardSpan).join(' &nbsp; ') + '</div>' +
         '<div><b>' + s.cls.madeLabel + '</b></div>' +
@@ -3586,7 +3717,7 @@ MODES.threebetpot = {
    Grind Loop: Leitner review, tiers, leak finder, badges
    ================================================================ */
 const REVIEW_GAP = { 1: 5, 2: 12 };   // answers until due, per box
-const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 7/8', barrel: 'Ch 12', river: 'Ch 12 (ext.)', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
+const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 8', barrel: 'Ch 12', river: 'Ch 12 (ext.)', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
 const MODE_GROUPS = [
   { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef', 'stackdepth'] },
   { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'river', 'valuebet', 'threebetpot'] },
@@ -3600,8 +3731,8 @@ const MODE_INFO = {
   vs3bet:   { title: 'vs 3-Bet', text: 'Preflop Bibles 4-Bet-Kapitel — verteidige deinen Open gegen ein 3-Bet: 4-Bet zum Value, 4-Bet-Bluff mit Blockern, Call, oder Fold.' },
   blinddef: { title: 'Blind Def', text: 'Preflop Bibles Blind-Defense-Kapitel — SB spielt 3-bet-or-fold; BB verteidigt breiter mit einer 3-Bet- und Call-Mischung.' },
   stackdepth: { title: 'Stack Depth', text: 'Kapitel 14 — dieselbe Position (CO), aber die Stack-Tiefe ändert die Range: shallow (40bb) braucht weniger Implied Odds, deep (200bb) mehr — spekulative Hände und Offsuit-Broadways tauschen den Platz.' },
-  cbet:     { title: 'C-Bet', text: 'Kapitel 4 — Continuation-Bet-Entscheidung nach Range-Vorteil und Board-Textur. Gib den Auto-C-Bet auf Boards auf, die den Caller begünstigen.' },
-  flopdef:  { title: 'Flop Defense', text: 'Kapitel 7–8 — BB gegen einen Flop-C-Bet verteidigen: Made-Hand-Stufen, Draws und ihre Outs, und der Preis, den du bekommst.' },
+  cbet:     { title: 'C-Bet', text: 'Kapitel 4 — der Light-C-Bet mit einer echten Hand: Board-Textur, Equity (Outs), Showdown-Value-Verletzlichkeit und Gegnertyp zusammen. Werthände laufen über den Value-Bet-Modus.' },
+  flopdef:  { title: 'Flop Defense', text: 'Kapitel 8 — BB gegen einen Flop-C-Bet verteidigen: Outs-wenn-hinten statt reiner Pot Odds (Ghost Equity!), gefürchtetes Underpair vs. Pair-mit-Board-Karte, und Implied/Future-Fold-Equity je nach Gegnertyp statt reinem Bet-Size-Vergleich.' },
   barrel:   { title: 'Turn Barrel', text: 'Kapitel 12 — zweite Patrone auf dem Turn: gute vs. schlechte Turn-Karten, und Showdown-Value nicht wegbrennen.' },
   river:    { title: 'River', text: 'Erweiterung von Kapitel 12 — dritte Straße: Value/Bluff/Check. Verpasste Draws mit Blockern sind die besten Bluffs; Gegnertyp entscheidet über dünnen Value und Bluff-Frequenz (Stationen nie bluffen, Nits mehr).' },
   valuebet: { title: 'Value Bet', text: 'Kapitel 5 — wie viele Straßen eine Made Hand wert ist, angepasst an den Gegnertyp (Station/Nit), plus das seltene Slowplay.' },
