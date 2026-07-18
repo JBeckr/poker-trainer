@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Preflop Trainer — Grinder's Manual Drills</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1e6b45">
+<meta name="theme-color" content="#0a0e14">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,34 +14,41 @@
 <meta name="mobile-web-app-capable" content="yes">
 <style>
   :root {
-    --bg: #12151c;
-    --panel: #1b202b;
-    --panel-2: #232a38;
-    --felt: #1e6b45;
-    --felt-dark: #145032;
-    --rail: #3a2a1c;
-    --text: #e8ebf0;
-    --muted: #8b94a5;
-    --green: #34c975;
-    --green-dark: #23945a;
-    --red: #e5534b;
-    --red-dark: #b03832;
-    --gold: #f4c74f;
-    --gold-dark: #c99b1f;
-    --blue: #4f8ef4;
-    --blue-dark: #3565c0;
+    /* Solver — GTO-tracker palette */
+    --bg: #0a0e14;
+    --panel: #101725;
+    --panel-2: #131c2c;
+    --felt: #123527;
+    --felt-dark: #0a1712;
+    --rail: #2a3a50;
+    --text: #e8eef6;
+    --muted: #647688;
+    --ink-dim: #a6b6c8;
+    --green: #2bd47e;         /* accent + win + raise */
+    --green-dark: #128a54;
+    --red: #f6564f;           /* lose / heart */
+    --red-dark: #a5322c;
+    --gold: #2bd47e;          /* remapped to accent green so accent UI unifies */
+    --gold-dark: #128a54;
+    --amber: #fbbf24;         /* medium tier / caution only */
+    --blue: #38bdf8;          /* call / diamond */
+    --blue-dark: #1f6fb8;
+    --line: #1e2a3c;
+    --line-2: #2a3a50;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Consolas, Menlo, monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-family: system-ui, "Segoe UI", Roboto, -apple-system, sans-serif;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 16px;
   }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
   header {
     width: 100%;
     max-width: 860px;
@@ -52,22 +59,22 @@
     gap: 8px;
     margin-bottom: 10px;
   }
-  h1 { font-size: 1.35rem; letter-spacing: 0.5px; }
+  h1 { font-size: 1.35rem; letter-spacing: -0.3px; font-weight: 800; }
   h1 .suit { color: var(--red); }
   .subtitle { color: var(--muted); font-size: 0.8rem; }
   .stats { display: flex; gap: 10px; }
   .stat {
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 10px;
     padding: 6px 14px;
     text-align: center;
     min-width: 74px;
   }
-  .stat .val { font-size: 1.15rem; font-weight: 700; }
-  .stat .lbl { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat .val { font-size: 1.15rem; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .stat .lbl { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); }
   .stat .val.good { color: var(--green); }
-  .stat .val.streak { color: var(--gold); }
+  .stat .val.streak { color: var(--amber); }
 
   /* ---------- Mode tabs ---------- */
   .tabbar {
@@ -91,7 +98,7 @@
   .tab-row.pills-row { justify-content: flex-end; }
   .tab {
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     color: var(--muted);
     border-radius: 10px;
     padding: 8px 16px;
@@ -108,7 +115,7 @@
   .tab.active {
     color: var(--gold);
     border-color: var(--gold-dark);
-    background: #2a2617;
+    background: #0e2419;
   }
   .tab .tier { font-size: 0.8rem; }
   .tab .ch { font-size: 0.6rem; font-weight: 400; color: var(--muted); }
@@ -116,7 +123,7 @@
   .profile-pills .pp-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-right: 4px; }
   .pill {
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     color: var(--muted);
     border-radius: 999px;
     padding: 6px 14px;
@@ -135,7 +142,7 @@
   }
   .mi-toggle {
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     color: var(--muted);
     border-radius: 10px;
     padding: 7px 14px;
@@ -148,18 +155,18 @@
     align-items: center;
     gap: 6px;
   }
-  .mi-toggle:hover { color: var(--text); border-color: #3a4254; }
+  .mi-toggle:hover { color: var(--text); border-color: #2a3a50; }
   .mi-toggle #mi-mode-title { color: var(--gold); font-weight: 800; margin-left: 2px; }
   .mi-body {
     display: none;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-top: none;
     border-radius: 0 0 10px 10px;
     padding: 10px 14px;
     font-size: 0.8rem;
     line-height: 1.55;
-    color: #cfd6e0;
+    color: #a6b6c8;
   }
   .mi-body.show { display: block; }
 
@@ -173,7 +180,7 @@
     margin-bottom: 10px;
     padding: 8px 14px;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 10px;
     font-size: 0.74rem;
   }
@@ -181,8 +188,8 @@
   .focus-bar .fb-label { font-weight: 700; letter-spacing: 0.3px; }
   .focus-bar .fb-hint { color: var(--muted); font-size: 0.68rem; }
   .fb-toggle {
-    background: #2a3140;
-    border: 1px solid #3a4254;
+    background: #182234;
+    border: 1px solid #2a3a50;
     color: var(--muted);
     border-radius: 999px;
     padding: 4px 12px 4px 26px;
@@ -200,7 +207,7 @@
     transform: translateY(-50%);
     width: 12px; height: 12px;
     border-radius: 50%;
-    background: #6b7484;
+    background: #647688;
     transition: background 0.15s, left 0.15s;
   }
   .fb-toggle.on { color: var(--green); border-color: var(--green-dark); background: #12351f; padding: 4px 26px 4px 12px; }
@@ -216,7 +223,7 @@
     margin-bottom: 10px;
     padding: 8px 14px;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 10px;
     font-size: 0.74rem;
     flex-wrap: wrap;
@@ -224,8 +231,8 @@
   .speed-bar .sb-label { font-weight: 700; letter-spacing: 0.3px; }
   .speed-bar .sb-pills { display: flex; gap: 4px; }
   .speed-bar .sb-pill {
-    background: #2a3140;
-    border: 1px solid #3a4254;
+    background: #182234;
+    border: 1px solid #2a3a50;
     color: var(--muted);
     border-radius: 999px;
     padding: 4px 12px;
@@ -234,13 +241,13 @@
     cursor: pointer;
   }
   .speed-bar .sb-pill:hover { color: var(--text); }
-  .speed-bar .sb-pill.active { color: var(--gold); border-color: var(--gold-dark); background: #2a2617; }
+  .speed-bar .sb-pill.active { color: var(--gold); border-color: var(--gold-dark); background: #0e2419; }
   .speed-bar .sb-hint { color: var(--muted); font-size: 0.68rem; }
 
   /* ---------- Range viewer ---------- */
   .stat-btn {
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 10px;
     padding: 6px 14px;
     color: var(--gold);
@@ -289,7 +296,7 @@
   .viewer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .viewer-head h2 { font-size: 1rem; letter-spacing: 0.5px; }
   .viewer-close {
-    background: none; border: 1px solid #39415233; color: var(--muted);
+    background: none; border: 1px solid #2a3a5033; color: var(--muted);
     border-radius: 8px; font-size: 0.9rem; padding: 4px 12px; font-weight: 700;
   }
   .viewer-close:hover { color: var(--red); border-color: var(--red); }
@@ -304,21 +311,21 @@
     font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
     letter-spacing: 1px; margin-bottom: 8px;
   }
-  .prog-title .prog-sub { text-transform: none; letter-spacing: 0; color: #6b7484; margin-left: 6px; }
+  .prog-title .prog-sub { text-transform: none; letter-spacing: 0; color: #647688; margin-left: 6px; }
   #prog-curve svg { width: 100%; height: auto; display: block; }
   .prog-empty { color: var(--muted); text-align: center; padding: 22px 0; font-size: 0.82rem; }
   .prog-mode-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.76rem; }
   .prog-mode-row .pm-name { flex: 0 0 128px; font-weight: 700; }
   .prog-mode-row .pm-name .pm-ch { font-weight: 400; color: var(--muted); font-size: 0.62rem; margin-left: 4px; }
-  .prog-mode-row .pm-bar { flex: 1; height: 8px; background: #2a3140; border-radius: 4px; overflow: hidden; }
+  .prog-mode-row .pm-bar { flex: 1; height: 8px; background: #182234; border-radius: 4px; overflow: hidden; }
   .prog-mode-row .pm-fill { height: 100%; border-radius: 4px; }
   .prog-mode-row .pm-val { flex: 0 0 78px; text-align: right; color: var(--muted); white-space: nowrap; }
   .prog-mode-row .pm-tier { margin-left: 3px; }
   .backup-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .backup-btn {
     flex: 1;
-    background: linear-gradient(180deg, #3a4356, #2a3140);
-    border: 1px solid #4a5468;
+    background: linear-gradient(180deg, #1b2740, #182234);
+    border: 1px solid #2a3a50;
     color: #fff;
     border-radius: 9px;
     padding: 9px 12px;
@@ -332,12 +339,59 @@
   .backup-msg.ok { color: var(--green); }
   .backup-msg.err { color: var(--red); }
 
+  /* ---------- Dashboard (Solver) ---------- */
+  .dash-panel { max-width: 800px; }
+  .dash-sub { font-family: var(--mono); font-size: 0.64rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin: -4px 0 14px; }
+  .dash-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+  .dash-kpi { background: var(--bg-2, #0c111a); padding: 12px 14px; }
+  .dash-kpi .k-lab { font-family: var(--mono); font-size: 0.54rem; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .dash-kpi .k-val { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 1.55rem; font-weight: 700; line-height: 1.1; margin-top: 4px; }
+  .dash-kpi .k-val small { font-size: 0.85rem; color: var(--muted); }
+  .dash-kpi .k-sub { font-family: var(--mono); font-size: 0.58rem; color: var(--muted); margin-top: 3px; }
+  .dash-kpi.accent .k-val { color: var(--green); }
+  .dash-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .dash-card { background: #0c111a; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .dash-h { font-family: var(--mono); font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-dim); margin-bottom: 10px; }
+  .dash-h .dash-hsub { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+  /* heatmap */
+  #dash-heat { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; }
+  #dash-heat .hc { aspect-ratio: 1; border-radius: 3px; }
+  .dash-legend { display: flex; gap: 12px; margin-top: 9px; font-family: var(--mono); font-size: 0.56rem; color: var(--muted); }
+  .dash-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  /* mode table */
+  .dash-mt { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .dash-mt th { font-family: var(--mono); font-size: 0.54rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); text-align: left; padding: 4px 5px; border-bottom: 1px solid var(--line-2); font-weight: 500; }
+  .dash-mt td { padding: 6px 5px; border-bottom: 1px solid var(--line); }
+  .dash-mt tr:last-child td { border-bottom: 0; }
+  .dash-mt .mn { font-weight: 600; } .dash-mt .mn small { color: var(--muted); font-family: var(--mono); font-size: 0.58rem; margin-left: 6px; }
+  .dash-mt .acc { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: center; border-radius: 4px; font-weight: 700; padding: 4px 0; }
+  .dash-mt td.rr { text-align: right; font-family: var(--mono); color: var(--muted); }
+  .dash-mt .grp td { font-family: var(--mono); font-size: 0.55rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--green); padding-top: 10px; }
+  /* leaks + tendencies */
+  .dash-leak { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .dash-leak:last-child { border-bottom: 0; }
+  .dash-leak .lt { flex: 1; font-size: 0.76rem; } .dash-leak .lt b { color: var(--text); } .dash-leak .lt small { display: block; font-family: var(--mono); font-size: 0.56rem; color: var(--muted); }
+  .dash-leak .lbar { flex: 0 0 60px; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+  .dash-leak .lbar > i { display: block; height: 100%; background: var(--red); }
+  .dash-leak .lr { font-family: var(--mono); font-size: 0.82rem; color: var(--red); width: 48px; text-align: right; }
+  .dash-tline { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.76rem; }
+  .dash-tline:last-child { border-bottom: 0; }
+  .dash-tline .tv { font-family: var(--mono); }
+  .dash-gauge { position: relative; height: 8px; border-radius: 4px; margin: 6px 0 5px; background: linear-gradient(90deg, var(--blue), #26324a 50%, var(--red)); }
+  .dash-gauge .pin { position: absolute; top: -3px; width: 3px; height: 14px; border-radius: 2px; background: var(--green); box-shadow: 0 0 7px var(--green); }
+  .dash-gauge-lbl { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.54rem; color: var(--muted); }
+  .dash-empty { color: var(--muted); font-size: 0.78rem; text-align: center; padding: 16px 0; }
+  @media (max-width: 640px) {
+    .dash-kpis { grid-template-columns: repeat(2, 1fr); }
+    .dash-grid { grid-template-columns: 1fr; }
+  }
+
   /* ---------- Table ---------- */
   .table-wrap {
     width: 100%;
     max-width: 860px;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 16px;
     padding: 18px 18px 14px;
   }
@@ -345,10 +399,14 @@
   .felt {
     position: absolute;
     inset: 34px 60px;
-    background: radial-gradient(ellipse at 50% 40%, #2a8a5c 0%, var(--felt) 45%, var(--felt-dark) 100%);
+    background: radial-gradient(120% 120% at 50% 32%, #163a29 0%, #0f2a1e 52%, #0a1712 100%);
     border-radius: 50% / 50%;
-    border: 10px solid var(--rail);
-    box-shadow: inset 0 0 40px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.4);
+    border: 2px solid var(--line-2);
+    box-shadow: inset 0 0 44px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.45);
+  }
+  .felt::before {
+    content: ""; position: absolute; inset: 7px; border-radius: 50%/50%;
+    border: 1px solid rgba(43,212,126,0.09); pointer-events: none;
   }
   .felt .brand {
     position: absolute;
@@ -388,7 +446,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: var(--gold);
-    color: #201a05;
+    color: #052414;
     font-size: 0.65rem;
     font-weight: 800;
     letter-spacing: 1.5px;
@@ -409,7 +467,7 @@
   }
   .seat .badge {
     background: var(--panel-2);
-    border: 1px solid #38415359;
+    border: 1px solid #2a3a5066;
     color: var(--text);
     border-radius: 999px;
     font-size: 0.68rem;
@@ -429,7 +487,7 @@
   }
   .seat.hero .badge {
     background: var(--gold);
-    color: #201a05;
+    color: #052414;
     border-color: var(--gold);
     box-shadow: 0 0 14px rgba(244,199,79,0.45);
   }
@@ -465,27 +523,30 @@
     z-index: 3;
   }
   .hero-cards { display: flex; gap: 5px; margin-top: 2px; }
+  /* GTO Wizard four-color deck: solid suit-colored faces, white rank + pip */
   .card {
     width: 52px; height: 72px;
-    background: #fdfdfa;
-    border-radius: 7px;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+    background: #1b2130;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 3px 9px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.16);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    color: #fff;
     font-weight: 800;
     animation: deal 0.3s ease-out;
   }
-  .card .rank { font-size: 1.5rem; line-height: 1; }
-  .card .suit { font-size: 1.3rem; line-height: 1.1; }
-  .card.sm { width: 38px; height: 53px; border-radius: 5px; }
+  .card .rank { font-size: 1.5rem; line-height: 1; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+  .card .suit { font-size: 1.25rem; line-height: 1.1; color: rgba(255,255,255,0.92); }
+  .card.sm { width: 38px; height: 53px; border-radius: 6px; }
   .card.sm .rank { font-size: 1.05rem; }
   .card.sm .suit { font-size: 0.9rem; }
-  .card.s { color: #1d232e; }
-  .card.h { color: #d63c34; }
-  .card.d { color: #2f6fe0; }
-  .card.c { color: #1f8a4c; }
+  .card.s { background: #1b2130; }   /* spade  · black */
+  .card.h { background: #d93a44; }   /* heart  · red   */
+  .card.d { background: #2f74e0; }   /* diamond· blue  */
+  .card.c { background: #1ba15a; }   /* club   · green */
   @keyframes deal {
     from { transform: translateY(-14px) scale(0.85); opacity: 0; }
     to   { transform: none; opacity: 1; }
@@ -514,12 +575,12 @@
   .btn-fold  { background: linear-gradient(180deg, var(--red), var(--red-dark)); }
   .btn-raise { background: linear-gradient(180deg, var(--green), var(--green-dark)); }
   .btn-call  { background: linear-gradient(180deg, var(--blue), var(--blue-dark)); }
-  .btn-3bet  { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: #201a05; }
+  .btn-3bet  { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: #052414; }
   .btn-chip  {
-    background: linear-gradient(180deg, #3a4356, #2a3140);
+    background: linear-gradient(180deg, #1b2740, #182234);
     font-size: 0.95rem;
     padding: 13px 26px;
-    border: 1px solid #4a5468;
+    border: 1px solid #2a3a50;
     color: #fff;
   }
   .btn-action .key {
@@ -559,13 +620,13 @@
   .verdict h2 { font-size: 1.15rem; margin-bottom: 6px; }
   .verdict.correct h2 { color: var(--green); }
   .verdict.wrong h2 { color: var(--red); }
-  .verdict p { font-size: 0.86rem; line-height: 1.5; color: #cfd6e0; }
+  .verdict p { font-size: 0.86rem; line-height: 1.5; color: #a6b6c8; }
   .verdict .pct { color: var(--gold); font-weight: 700; }
   .verdict .review-note { margin-top: 8px; font-size: 0.78rem; color: var(--gold); }
   .extra-panel {
     flex: 1 1 220px;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 14px;
     padding: 12px 16px;
     display: none;
@@ -579,14 +640,14 @@
     margin-bottom: 8px;
     text-align: center;
   }
-  .extra-panel .ep-body { font-size: 0.85rem; line-height: 1.6; color: #cfd6e0; }
+  .extra-panel .ep-body { font-size: 0.85rem; line-height: 1.6; color: #a6b6c8; }
   .formula-line { font-size: 1rem; margin: 6px 0; }
-  .vb-sizing { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2b3342; }
+  .vb-sizing { margin-top: 12px; padding-top: 12px; border-top: 1px solid #1e2a3c; }
   .vb-sizing .vb-prompt { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
   .vb-sizing .vb-btns { display: flex; gap: 8px; }
   .vb-sizing .vb-btn {
     flex: 1; padding: 9px 10px; font-size: 0.8rem; border-radius: 9px;
-    background: linear-gradient(180deg, #3a4356, #2a3140); border: 1px solid #4a5468; color: #fff;
+    background: linear-gradient(180deg, #1b2740, #182234); border: 1px solid #2a3a50; color: #fff;
   }
   .vb-sizing .vb-btn:hover:not(:disabled) { filter: brightness(1.15); }
   .vb-sizing .vb-btn:disabled { opacity: 0.4; }
@@ -597,7 +658,7 @@
   .matrix-panel {
     flex: 0 0 auto;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 14px;
     padding: 12px 14px;
     display: none;
@@ -623,19 +684,19 @@
     align-items: center;
     justify-content: center;
     border-radius: 3px;
-    background: #2a3140;
-    color: #6b7484;
+    background: #182234;
+    color: #647688;
     font-weight: 600;
     user-select: none;
   }
   .cell.in       { background: var(--green-dark); color: #eafff2; }
   .cell.in-raise { background: var(--gold-dark);  color: #fff8e0; }
   .cell.in-call  { background: var(--blue-dark);  color: #e7efff; }
-  .cell.in-mix     { background: linear-gradient(135deg, var(--green-dark) 50%, #2a3140 50%); color: #cfe9d8; }
+  .cell.in-mix     { background: linear-gradient(135deg, var(--green-dark) 50%, #182234 50%); color: #cfe9d8; }
   .cell.in-dual    { background: linear-gradient(135deg, var(--gold-dark) 50%, var(--blue-dark) 50%); color: #fff; }
-  .cell.in-bluffmix{ background: linear-gradient(135deg, var(--gold-dark) 50%, #2a3140 50%); color: #efe2b0; }
-  .cell.in-callmix { background: linear-gradient(135deg, var(--blue-dark) 50%, #2a3140 50%); color: #b9c8e6; }
-  .cell.in-skip    { background: repeating-linear-gradient(45deg, #3a4254 0 3px, #262c38 3px 6px); color: #7d8698; }
+  .cell.in-bluffmix{ background: linear-gradient(135deg, var(--gold-dark) 50%, #182234 50%); color: #efe2b0; }
+  .cell.in-callmix { background: linear-gradient(135deg, var(--blue-dark) 50%, #182234 50%); color: #b9c8e6; }
+  .cell.in-skip    { background: repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px); color: #7d8698; }
   .cell.hero-cell {
     outline: 2.5px solid var(--gold);
     outline-offset: 1px;
@@ -668,7 +729,7 @@
     margin: 6px 0;
   }
   .combo-cell {
-    background: #2a3140;
+    background: #182234;
     border-radius: 5px;
     padding: 4px 2px;
     text-align: center;
@@ -680,7 +741,7 @@
     text-decoration: line-through;
     background: #201f26;
   }
-  .combo-cell .cs { color: #cfd6e0; }
+  .combo-cell .cs { color: #a6b6c8; }
   .combo-cell .ch { color: #ff8a84; }
   .combo-cell .cd { color: #7fb0ff; }
   .combo-cell .cc { color: #6fd89a; }
@@ -693,7 +754,7 @@
     max-width: 860px;
     margin-top: 12px;
     background: var(--panel);
-    border: 1px solid #2b3342;
+    border: 1px solid #1e2a3c;
     border-radius: 14px;
     padding: 12px 18px 14px;
   }
@@ -711,7 +772,7 @@
   }
   .btn-reset {
     background: none;
-    border: 1px solid #39415233;
+    border: 1px solid #2a3a5033;
     color: var(--muted);
     font-size: 0.65rem;
     padding: 4px 10px;
@@ -730,7 +791,7 @@
   }
   .pos-row .pr-label .p { font-weight: 700; white-space: nowrap; }
   .pos-row .pr-label .a { color: var(--muted); white-space: nowrap; }
-  .bar { height: 6px; background: #2a3140; border-radius: 3px; overflow: hidden; }
+  .bar { height: 6px; background: #182234; border-radius: 3px; overflow: hidden; }
   .bar .fill {
     height: 100%;
     background: linear-gradient(90deg, var(--green-dark), var(--green));
@@ -738,12 +799,12 @@
     width: 0;
     transition: width 0.4s ease;
   }
-  .leak-row { font-size: 0.8rem; color: #cfd6e0; margin-bottom: 6px; line-height: 1.5; }
+  .leak-row { font-size: 0.8rem; color: #a6b6c8; margin-bottom: 6px; line-height: 1.5; }
   .leak-row .ch-ref { color: var(--gold); font-weight: 600; }
   .trophies { display: flex; gap: 10px; flex-wrap: wrap; }
   .trophy {
     background: var(--panel-2);
-    border: 1px solid #38415359;
+    border: 1px solid #2a3a5066;
     border-radius: 10px;
     padding: 6px 10px;
     font-size: 0.7rem;
@@ -758,7 +819,7 @@
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%) translateY(80px);
-    background: linear-gradient(180deg, #3a3115, #2a2410);
+    background: linear-gradient(180deg, #0e2419, #0a1712);
     border: 1px solid var(--gold);
     color: var(--gold);
     border-radius: 12px;
@@ -782,7 +843,7 @@
   }
   kbd {
     background: var(--panel-2);
-    border: 1px solid #3a4254;
+    border: 1px solid #2a3a50;
     border-radius: 4px;
     padding: 1px 6px;
     font-size: 0.65rem;
@@ -808,7 +869,7 @@
 
     .table-wrap { padding: 12px 10px 10px; }
     .table { height: 300px; }
-    .felt { inset: 34px 20px; border-width: 7px; }
+    .felt { inset: 34px 20px; border-width: 2px; }
     .seat { width: 66px; gap: 2px; }
     .seat .badge { font-size: 0.58rem; padding: 2px 7px; }
     .seat .stack { font-size: 0.52rem; }
@@ -852,7 +913,7 @@
     <div class="subtitle">6-max cash drills · Grinder's Manual style ranges</div>
   </div>
   <div class="stats">
-    <button class="stat-btn" id="btn-progress">📈 Fortschritt<span class="lbl">Analyse</span></button>
+    <button class="stat-btn" id="btn-progress">📊 Dashboard<span class="lbl">Analyse</span></button>
     <button class="stat-btn" id="btn-viewer">📖 Ranges<span class="lbl">ansehen</span></button>
     <button class="stat-btn" id="btn-update">🔄 Updates<span class="lbl" id="update-lbl">aktuell</span></button>
     <div class="stat"><div class="val good" id="stat-score">0/0</div><div class="lbl">Score</div></div>
@@ -887,26 +948,43 @@
 </div>
 
 <div class="viewer-overlay" id="progress">
-  <div class="viewer-panel" style="max-width:640px">
+  <div class="viewer-panel dash-panel">
     <div class="viewer-head">
-      <h2>📈 Fortschritt &amp; Analyse</h2>
+      <h2>📊 Dashboard</h2>
       <button class="viewer-close" id="progress-close">✕ close</button>
     </div>
-    <div class="prog-section">
-      <div class="prog-title">Genauigkeit über Zeit <span class="prog-sub" id="prog-curve-sub"></span></div>
-      <div id="prog-curve"></div>
+    <div class="dash-sub" id="dash-sub"></div>
+
+    <div class="dash-kpis" id="dash-kpis"></div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-h">Accuracy over time <span class="dash-hsub" id="prog-curve-sub"></span></div>
+        <div id="prog-curve"></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-h">Accuracy by hand</div>
+        <div id="dash-heat"></div>
+        <div class="dash-legend" id="dash-heat-legend"></div>
+      </div>
     </div>
-    <div class="prog-section">
-      <div class="prog-title">Genauigkeit pro Modus</div>
-      <div id="prog-modes"></div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-h">Performance by mode</div>
+        <div id="dash-modes"></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-h">Biggest leaks</div>
+        <div id="dash-leaks"></div>
+        <div class="dash-h" style="margin-top:16px">Tendencies</div>
+        <div id="dash-tend"></div>
+      </div>
     </div>
-    <div class="prog-section">
-      <div class="prog-title">Größte Leaks</div>
-      <div id="prog-leaks"></div>
-    </div>
-    <div class="prog-section" style="margin-bottom:0">
-      <div class="prog-title">Fortschritt sichern</div>
-      <div class="backup-row">
+
+    <div class="dash-card" style="margin-top:12px">
+      <div class="dash-h">Backup</div>
+      <div class="backup-row" style="margin-top:8px">
         <button class="backup-btn" id="btn-export">⬇ Export</button>
         <button class="backup-btn" id="btn-import">⬆ Import</button>
         <input type="file" id="import-file" accept="application/json" style="display:none">
@@ -1005,7 +1083,7 @@
 
 <div class="toast" id="toast"></div>
 
-<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); your progress can be backed up as a file in the 📈 overlay. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
+<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); the 📊 Dashboard shows your accuracy over time, an accuracy-by-hand heatmap, per-mode breakdown, leaks and tendencies, and can back up your progress as a file. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
 
 <script>
 /* ================================================================
@@ -1145,11 +1223,11 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '1.4.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.0.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
-    missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}
+    missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}, handStats: {}
   }};
 }
 function loadStats() {
@@ -1313,7 +1391,7 @@ function paintMatrix(gridEl, m) {
 function paintLegend(legEl, m) {
   legEl.innerHTML = '';
   const items = m.layers.map(l => ({ label: l.label, style: 'background:' + cssVarOf(l.css) }))
-    .concat([{ label: m.restLabel || 'Fold', style: 'background:#2a3140' }]);
+    .concat([{ label: m.restLabel || 'Fold', style: 'background:#182234' }]);
   if (m.hero) items.push({ label: 'Your hand', style: 'background:none;outline:2px solid var(--gold);outline-offset:-1px' });
   for (const it of items) {
     const s = document.createElement('span');
@@ -1334,13 +1412,13 @@ function cssVarOf(cls) {
     'in': 'var(--green-dark)',
     'in-raise': 'var(--gold-dark)',
     'in-call': 'var(--blue-dark)',
-    'in-mix': 'linear-gradient(135deg, var(--green-dark) 50%, #2a3140 50%)',
+    'in-mix': 'linear-gradient(135deg, var(--green-dark) 50%, #182234 50%)',
     'in-dual': 'linear-gradient(135deg, var(--gold-dark) 50%, var(--blue-dark) 50%)',
-    'in-bluffmix': 'linear-gradient(135deg, var(--gold-dark) 50%, #2a3140 50%)',
-    'in-callmix': 'linear-gradient(135deg, var(--blue-dark) 50%, #2a3140 50%)',
-    'in-skip': 'repeating-linear-gradient(45deg, #3a4254 0 3px, #262c38 3px 6px)'
+    'in-bluffmix': 'linear-gradient(135deg, var(--gold-dark) 50%, #182234 50%)',
+    'in-callmix': 'linear-gradient(135deg, var(--blue-dark) 50%, #182234 50%)',
+    'in-skip': 'repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px)'
   };
-  return map[cls] || '#2a3140';
+  return map[cls] || '#182234';
 }
 
 /* ----- verdict + extra ----- */
@@ -1540,6 +1618,18 @@ function nextSpot() {
 let schedule = mode => { const s = mode.deal(); s.review = null; return s; };
 let onGraded = () => {};            // Grind Loop hook (review promote/demote, badges)
 
+// 169-hand notation from a spot's hero cards (for the dashboard accuracy heatmap)
+function heroNotation(sp) {
+  if (sp && typeof sp.notation === 'string' && /^[AKQJT98765432]{2}[so]?$/.test(sp.notation)) return sp.notation;
+  const hc = sp && sp.heroCards;
+  if (!hc || hc.length !== 2) return null;
+  const [a, b] = hc;
+  if (a.rank === b.rank) return a.rank + b.rank;
+  const hi = RI[a.rank] <= RI[b.rank] ? a : b;
+  const lo = hi === a ? b : a;
+  return hi.rank + lo.rank + (a.suit === b.suit ? 's' : 'o');
+}
+
 function onAction(actionId) {
   if (answered || !spot) return;
   answered = true;
@@ -1562,6 +1652,15 @@ function onAction(actionId) {
     ms.streak = 0;
   }
   stats.grind.counters.answers++;
+  // per-hand accuracy for the dashboard heatmap (skip modes not keyed on a starting hand)
+  if (activeModeId !== 'combos' && activeModeId !== 'sizing') {
+    const hn = heroNotation(spot);
+    if (hn) {
+      if (!stats.grind.handStats) stats.grind.handStats = {};
+      const hs = stats.grind.handStats[hn] || (stats.grind.handStats[hn] = { t: 0, c: 0 });
+      hs.t++; if (res.correct) hs.c++;
+    }
+  }
   // leak tags
   const tags = res.tags || {};
   if (tags.handClass) {
@@ -4081,8 +4180,8 @@ $('mi-toggle').addEventListener('click', () => $('mi-body').classList.toggle('sh
    ================================================================ */
 function progressCurveSVG(history) {
   if (!history || history.length < 2)
-    return '<div class="prog-empty">Spiele ein paar Hände, dann erscheint hier deine Genauigkeits-Kurve.</div>';
-  const W = 560, H = 150, padL = 34, padR = 10, padT = 12, padB = 20;
+    return '<div class="dash-empty">Play a few hands — your accuracy curve appears here.</div>';
+  const W = 520, H = 150, padL = 30, padR = 10, padT = 12, padB = 20;
   const n = history.length;
   const x = i => padL + (W - padL - padR) * (n === 1 ? 0.5 : i / (n - 1));
   const y = acc => padT + (H - padT - padB) * (1 - acc);
@@ -4093,11 +4192,11 @@ function progressCurveSVG(history) {
     ' L' + linePts[n - 1][0].toFixed(1) + ' ' + (H - padB) + ' Z';
   const grid = [0, 0.5, 1].map(a =>
     '<line x1="' + padL + '" y1="' + y(a).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y(a).toFixed(1) +
-    '" stroke="#2a3140" stroke-width="1"/>' +
-    '<text x="' + (padL - 6) + '" y="' + (y(a) + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#6b7484">' +
+    '" stroke="#182234" stroke-width="1"/>' +
+    '<text x="' + (padL - 6) + '" y="' + (y(a) + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#647688">' +
     Math.round(a * 100) + '%</text>').join('');
   const last = history[n - 1].acc;
-  const lastColor = last >= 0.8 ? 'var(--green)' : last >= 0.6 ? 'var(--gold)' : 'var(--red)';
+  const lastColor = last >= 0.8 ? 'var(--green)' : last >= 0.6 ? 'var(--amber)' : 'var(--red)';
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
     '<defs><linearGradient id="pgrad" x1="0" y1="0" x2="0" y2="1">' +
     '<stop offset="0" stop-color="var(--green)" stop-opacity="0.30"/>' +
@@ -4107,45 +4206,115 @@ function progressCurveSVG(history) {
     '<circle cx="' + linePts[n - 1][0].toFixed(1) + '" cy="' + linePts[n - 1][1].toFixed(1) + '" r="3.5" fill="' + lastColor + '"/>' +
     '</svg>';
 }
+function accColor(acc) {          // heatmap: red(low) → amber → green(high)
+  const t = Math.max(0, Math.min(1, (acc - 0.4) / 0.55));
+  return 'hsl(' + (t * 130).toFixed(0) + ',62%,' + (30 + t * 12).toFixed(0) + '%)';
+}
+function accCell(acc) {           // mode-table cell tint
+  if (acc >= 0.8) return { bg: 'rgba(43,212,126,0.22)', fg: 'var(--green)' };
+  if (acc >= 0.6) return { bg: 'rgba(251,191,36,0.20)', fg: 'var(--amber)' };
+  return { bg: 'rgba(246,86,79,0.22)', fg: 'var(--red)' };
+}
 function renderProgress() {
   const g = stats.grind;
-  // curve
-  $('prog-curve').innerHTML = progressCurveSVG(g.history);
-  const ansN = g.counters.answers || 0;
-  $('prog-curve-sub').textContent = ansN ? '· gleitend über die letzten 20 Hände · ' + ansN + ' gesamt' : '';
-  // per-mode accuracy dashboard
-  const rows = [];
-  for (const id of Object.keys(MODES)) {
-    for (const prof of (PROFILED_MODES.includes(id) ? ['gm', 'pb3'] : [null])) {
-      const sid = prof ? (prof === 'gm' ? id : id + '@' + prof) : id;
-      const ms = stats.modes[sid];
-      if (!ms || !ms.total) continue;
-      const pct = Math.round(ms.correct / ms.total * 100);
-      const col = pct >= 80 ? 'var(--green)' : pct >= 60 ? 'var(--gold)' : 'var(--red)';
-      const name = MODES[id].label + (prof ? ' (' + PROFILES[prof].short + ')' : '');
-      const tier = getTier(id) || '';
-      rows.push({ pct, total: ms.total, html:
-        '<div class="prog-mode-row"><div class="pm-name">' + name +
-        '<span class="pm-ch">' + MODES[id].chapter + '</span></div>' +
-        '<div class="pm-bar"><div class="pm-fill" style="width:' + pct + '%;background:' + col + '"></div></div>' +
-        '<div class="pm-val">' + pct + '% · ' + ms.total + '<span class="pm-tier">' + tier + '</span></div></div>' });
-    }
+
+  // aggregate per base mode across profiles
+  const agg = {};
+  let allT = 0, allC = 0, bestStreak = 0;
+  for (const [sid, ms] of Object.entries(stats.modes)) {
+    const base = sid.split('@')[0];
+    const a = agg[base] || (agg[base] = { total: 0, correct: 0 });
+    a.total += ms.total || 0; a.correct += ms.correct || 0;
+    allT += ms.total || 0; allC += ms.correct || 0;
+    if ((ms.best || 0) > bestStreak) bestStreak = ms.best;
   }
-  rows.sort((a, b) => b.total - a.total);
-  $('prog-modes').innerHTML = rows.length
-    ? rows.map(r => r.html).join('')
-    : '<div class="prog-empty">Noch keine Hände gespielt.</div>';
-  // top leaks (reuse tagStats)
+  const overall = allT ? Math.round(allC / allT * 100) : 0;
+
+  $('dash-sub').textContent = (g.counters.answers || 0) + ' hands · ' + PROFILES[activeProfile()].short + ' profile';
+
+  // KPI strip
+  const kpi = (lab, val, sub, accent) => '<div class="dash-kpi' + (accent ? ' accent' : '') +
+    '"><div class="k-lab">' + lab + '</div><div class="k-val">' + val + '</div><div class="k-sub">' + (sub || '&nbsp;') + '</div></div>';
+  $('dash-kpis').innerHTML =
+    kpi('Accuracy', overall + '<small>%</small>', allT + ' graded', true) +
+    kpi('Hands', (g.counters.answers || 0), '', false) +
+    kpi('Best streak', bestStreak, '', false) +
+    kpi('Reviews cleared', (g.counters.mastered || 0), (g.missQueue || []).length + ' in queue', false) +
+    kpi('Badges', (g.badges || []).length + '<small>/' + BADGES.length + '</small>', '', false);
+
+  // accuracy curve
+  $('prog-curve').innerHTML = progressCurveSVG(g.history);
+  $('prog-curve-sub').textContent = g.counters.answers ? '· rolling / last 20' : '';
+
+  // accuracy-by-hand heatmap (per-hand data, hand-class fallback)
+  const hs = g.handStats || {};
+  const classAgg = {};
+  for (const [key, v] of Object.entries(g.tagStats || {})) {
+    const cls = key.split('|')[1];
+    const c = classAgg[cls] || (classAgg[cls] = { t: 0, m: 0 });
+    c.t += v.t; c.m += v.m;
+  }
+  let heat = '';
+  for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) {
+    const hi = RANKS[Math.min(i, j)], lo = RANKS[Math.max(i, j)];
+    const notation = i === j ? hi + hi : (i < j ? hi + lo + 's' : lo + hi + 'o');
+    let acc = null;
+    const h = hs[notation];
+    if (h && h.t >= 3) acc = h.c / h.t;
+    else { const ca = classAgg[handClass(notation)]; if (ca && ca.t >= 5) acc = 1 - ca.m / ca.t; }
+    const bg = acc == null ? '#182234' : accColor(acc);
+    heat += '<div class="hc" style="background:' + bg + '" title="' + notation +
+      (acc != null ? ' · ' + Math.round(acc * 100) + '%' : ' · no data') + '"></div>';
+  }
+  $('dash-heat').innerHTML = heat;
+  $('dash-heat-legend').innerHTML =
+    '<span><i style="background:' + accColor(0.45) + '"></i>&lt;55%</span>' +
+    '<span><i style="background:' + accColor(0.72) + '"></i>~72%</span>' +
+    '<span><i style="background:' + accColor(0.95) + '"></i>90%+</span>' +
+    '<span><i style="background:#182234"></i>no data</span>';
+
+  // performance by mode (grouped, colored acc cell)
+  let mt = '<table class="dash-mt"><thead><tr><th>Mode</th><th style="width:50px;text-align:center">Acc</th>' +
+    '<th style="text-align:right">Hands</th><th style="text-align:right">Tier</th></tr></thead><tbody>';
+  let anyMode = false;
+  for (const grp of MODE_GROUPS) {
+    const rows = grp.modes.filter(id => agg[id] && agg[id].total).map(id => {
+      const a = agg[id], pct = Math.round(a.correct / a.total * 100), c = accCell(a.correct / a.total);
+      anyMode = true;
+      return '<tr><td class="mn">' + MODES[id].label + '<small>' + MODES[id].chapter + '</small></td>' +
+        '<td><div class="acc" style="background:' + c.bg + ';color:' + c.fg + '">' + pct + '</div></td>' +
+        '<td class="rr">' + a.total + '</td><td class="rr">' + (getTier(id) || '·') + '</td></tr>';
+    });
+    if (rows.length) mt += '<tr class="grp"><td colspan="4">' + grp.label + '</td></tr>' + rows.join('');
+  }
+  mt += '</tbody></table>';
+  $('dash-modes').innerHTML = anyMode ? mt : '<div class="dash-empty">No hands played yet.</div>';
+
+  // biggest leaks
   const leaks = Object.entries(g.tagStats || {})
     .map(([key, v]) => ({ key, ...v, rate: v.m / v.t }))
     .filter(l => l.t >= 4 && l.rate >= 0.3)
-    .sort((a, b) => b.m - a.m).slice(0, 5);
-  $('prog-leaks').innerHTML = leaks.length
-    ? leaks.map(l => { const [mid, hc] = l.key.split('|');
-        return '<div class="leak-row">' + (MODES[mid] ? MODES[mid].label : mid) + ': <b>' +
-          (HAND_CLASS_LABEL[hc] || hc) + '</b> — ' + l.m + '/' + l.t + ' falsch · <span class="ch-ref">' +
-          (CHAPTER_REF[mid] || '') + '</span></div>'; }).join('')
-    : '<div class="prog-empty">Noch keine Leaks erkannt — weiter so!</div>';
+    .sort((a, b) => b.m - a.m).slice(0, 4);
+  $('dash-leaks').innerHTML = leaks.length
+    ? leaks.map(l => { const [mid, hc] = l.key.split('|'), pct = Math.round(l.rate * 100);
+        return '<div class="dash-leak"><div class="lt">' + (HAND_CLASS_LABEL[hc] || hc) +
+          '<small>' + (MODES[mid] ? MODES[mid].label : mid) + ' · ' + (CHAPTER_REF[mid] || '') + '</small></div>' +
+          '<div class="lbar"><i style="width:' + pct + '%"></i></div><div class="lr">' + pct + '%</div></div>'; }).join('')
+    : '<div class="dash-empty">No leaks yet — keep going.</div>';
+
+  // tendencies (aggression bias from dirStats)
+  let passive = 0, aggressive = 0;
+  for (const [k, n] of Object.entries(g.dirStats || {})) {
+    if (k.endsWith('|passive')) passive += n; else if (k.endsWith('|aggressive')) aggressive += n;
+  }
+  const dtot = passive + aggressive;
+  const pin = dtot ? Math.round(aggressive / dtot * 100) : 50;
+  $('dash-tend').innerHTML =
+    '<div class="dash-gauge"><div class="pin" style="left:' + pin + '%"></div></div>' +
+    '<div class="dash-gauge-lbl"><span>passive</span><span>balanced</span><span>aggressive</span></div>' +
+    '<div class="dash-tline" style="margin-top:8px"><span>Errors: too passive</span><span class="tv" style="color:var(--blue)">' + (dtot ? Math.round(passive / dtot * 100) : 0) + '%</span></div>' +
+    '<div class="dash-tline"><span>Errors: too aggressive</span><span class="tv" style="color:var(--red)">' + (dtot ? Math.round(aggressive / dtot * 100) : 0) + '%</span></div>' +
+    '<div class="dash-tline"><span>Mastered spots</span><span class="tv" style="color:var(--green)">' + (g.counters.mastered || 0) + '</span></div>';
 }
 function openProgress() { renderProgress(); $('progress').classList.add('show'); $('backup-msg').textContent = ''; }
 function closeProgress() { $('progress').classList.remove('show'); }
