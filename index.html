@@ -1090,7 +1090,7 @@
 
 <div class="toast" id="toast"></div>
 
-<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); the 📊 Dashboard shows your accuracy over time, an accuracy-by-hand heatmap, per-mode breakdown, leaks and tendencies, and can back up your progress as a file. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
+<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, <b>5-Bet</b>, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts — the 5-Bet charts keep the book's exact frequency splits and colours (5-bet / call vs 4-bet / fold vs 4-bet / borderline) — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); the 📊 Dashboard shows your accuracy over time, an accuracy-by-hand heatmap, per-mode breakdown, leaks and tendencies, and can back up your progress as a file. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
 
 <script>
 /* ================================================================
@@ -1230,7 +1230,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.2.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.3.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1438,6 +1438,22 @@ function paintMatrix(gridEl, m) {
       }
       if (label === m.hero) cls += ' hero-cell';
       cell.className = cls;
+      // proportional multi-colour fill (book-style split cells): exact vertical
+      // bands reproducing the scanned frequencies
+      if (m.fills) {
+        const parts = m.fills[label];
+        if (parts && parts.length) {
+          let acc = 0; const stops = [];
+          for (const p of parts) {
+            stops.push(p.color + ' ' + acc.toFixed(2) + '% ' + (acc + p.pct).toFixed(2) + '%');
+            acc += p.pct;
+          }
+          if (acc < 99.9) stops.push('#182234 ' + acc.toFixed(2) + '% 100%');
+          cell.style.background = 'linear-gradient(90deg,' + stops.join(',') + ')';
+        } else {
+          cell.style.background = '#182234';
+        }
+      }
       if (m.weights && inLayer) {
         cell.textContent = label.length === 2 ? '6' : label[2] === 's' ? '4' : '12';
       } else {
@@ -1449,8 +1465,10 @@ function paintMatrix(gridEl, m) {
 }
 function paintLegend(legEl, m) {
   legEl.innerHTML = '';
-  const items = m.layers.map(l => ({ label: l.label, style: 'background:' + cssVarOf(l.css) }))
-    .concat([{ label: m.restLabel || 'Fold', style: 'background:#182234' }]);
+  const base = m.legend
+    ? m.legend.map(l => ({ label: l.label, style: 'background:' + l.color }))
+    : m.layers.map(l => ({ label: l.label, style: 'background:' + cssVarOf(l.css) }));
+  const items = base.concat([{ label: m.restLabel || 'Fold', style: 'background:#182234' }]);
   if (m.hero) items.push({ label: 'Your hand', style: 'background:none;outline:2px solid var(--gold);outline-offset:-1px' });
   for (const it of items) {
     const s = document.createElement('span');
@@ -4102,6 +4120,60 @@ function renderTrophies() {
 /* ================================================================
    Range Viewer — browse any chart without drilling
    ================================================================ */
+/* ---------------- 5-Bet / facing a 4-bet (Preflop Bible Vol.3, pp. 40-55) ----------------
+   Pixel-scanned hand-by-hand from the book's charts at 150 dpi: every pixel column of
+   every cell was classified against the legend colours, so each cell keeps the exact
+   frequency split the book prints (that is why cells render as proportional bands).
+     5 = 5-bet (all-in at 100bb)   C = call the 4-bet
+     F = fold to the 4-bet         B = borderline, folded by default
+   Validated against the book's own combo counts: the 5-bet range matches on all 13
+   charts (mostly exactly); call/fold/borderline land within a few combos, running
+   slightly low because antialiased band edges lose a pixel at each colour boundary.
+   The BB charts additionally carry the flat-calling range in greens — a different
+   decision, deliberately excluded here. */
+const FIVEBET_COLORS = { '5': '#33ccff', 'C': '#9966ff', 'F': '#4472c4', 'B': '#ffff00' };
+const FIVEBET_LABEL  = { '5': '5-bet (all-in)', 'C': 'Call vs 4-bet', 'F': 'Fold vs 4-bet', 'B': 'Borderline → fold' };
+const FIVEBET_RAW = {
+  MP_vs_UTG: 'AA=5:51.4/C:48.6 AKs=5:75/C:25 AQs=C:100 AJs=C:50/F:50 ATs=F:100 A9s=F:22.2/B:26.4 A8s=F:11.1/B:19.4 A5s=F:98.6 A4s=F:72.2/B:26.4 A3s=B:15.3 AKo=5:75/C:25 KK=5:100 KQs=C:75/F:25 KJs=F:100 KTs=F:100 K9s=B:16.7 AQo=F:100 KQo=F:50/B:48.6 QQ=5:23.6/C:76.4 QJs=F:73.6/B:25 QTs=B:22.2 JJ=C:100 JTs=C:11.1/B:26.4 TT=C:73.6/F:26.4 99=C:27.8/B:25 88=C:16.7/B:26.4 87s=C:11.1 77=C:5.6 76s=C:15.3 66=C:5.6 65s=C:20.8 54s=C:20.8',
+  CO_vs_UTG: 'AA=5:51.4/C:48.6 AKs=5:75/C:25 AQs=C:100 AJs=C:50/F:50 ATs=F:100 A9s=F:22.2/B:26.4 A8s=F:12.5 A5s=F:98.6 A4s=F:72.2/B:26.4 A3s=B:15.3 AKo=5:75/C:25 KK=5:100 KQs=C:50/F:50 KJs=F:100 KTs=C:100 K9s=B:11.1 AQo=F:100 KQo=F:69.4/B:29.2 QQ=5:23.6/C:76.4 QJs=F:100 QTs=B:22.2 JJ=C:100 JTs=C:11.1/B:26.4 TT=C:73.6/F:26.4 99=C:48.6/B:50 88=C:16.7/B:26.4 87s=C:11.1 77=C:16.7/B:15.3 76s=C:11.1 66=C:16.7 65s=C:20.8 54s=C:20.8',
+  CO_vs_MP: 'AA=5:50/C:50 AKs=5:100 AQs=C:100 AJs=C:100 ATs=C:22.2/F:77.8 A9s=B:22.2 A8s=C:15.3/B:20.8 A5s=C:47.2/F:51.4 A4s=F:97.2 A3s=C:13.9/B:20.8 AKo=5:65.3/C:34.7 KK=5:100 KQs=C:100 KJs=C:73.6/F:26.4 AQo=F:100 KQo=F:100 QQ=5:50/C:50 QJs=C:22.2/F:77.8 QTs=C:16.7/B:25 AJo=F:75/B:23.6 JJ=C:100 JTs=C:16.7/B:50 TT=C:100 T9s=C:11.1/B:51.4 99=C:48.6/B:51.4 98s=B:47.2 88=C:20.8/B:50 87s=C:9.7/B:20.8 77=C:20.8 76s=C:15.3/B:20.8 66=C:9.7 65s=C:19.4 54s=C:25',
+  BTN_vs_UTG: 'AA=5:51.4/C:48.6 AKs=5:100 AQs=C:100 AJs=C:50/F:50 ATs=F:100 A9s=F:48.6/B:50 A8s=F:48.6/B:25 A7s=B:11.1 A5s=F:72.2/B:25 A4s=F:47.2/B:25 A3s=B:20.8 AKo=5:75/C:25 KK=5:100 KQs=C:100 KJs=F:100 KTs=F:48.6/B:50 K9s=F:22.2/B:26.4 AQo=F:100 KQo=F:50/B:48.6 QQ=5:23.6/C:76.4 QJs=C:50/F:50 QTs=F:48.6/B:23.6 AJo=F:50/B:48.6 JJ=C:100 JTs=C:48.6/F:51.4 TT=C:100 T9s=C:48.6/B:23.6 99=C:48.6 98s=C:48.6 88=C:16.7/B:33.3 87s=C:48.6/B:13.9 77=C:16.7/B:33.3 76s=C:47.2/B:13.9 66=C:16.7 65s=B:9.7',
+  BTN_vs_MP: 'AA=5:23.6/C:76.4 AKs=5:100 AQs=C:100 AJs=C:100 ATs=C:100 A9s=F:75 A8s=F:79.2/B:20.8 A7s=F:58.3 A5s=F:79.2 A4s=F:77.8 A3s=B:20.8 AKo=5:75/C:25 KK=5:100 KQs=C:100 KJs=C:50/F:50 KTs=F:100 K9s=F:73.6/B:25 AQo=C:23.6/F:76.4 KQo=F:75/B:23.6 QQ=5:50/C:50 QJs=C:100 QTs=F:100 AJo=F:100 JJ=C:100 JTs=C:100 J9s=B:48.6 ATo=B:18.1 TT=C:100 T9s=C:65.3/B:15.3 99=C:48.6/B:23.6 88=F:29.2/B:26.4 87s=C:11.1/B:15.3 77=F:29.2/B:26.4 76s=C:11.1/B:15.3 66=F:29.2 65s=C:9.7/B:15.3 54s=C:30.6',
+  BTN_vs_CO: 'AA=C:100 AKs=5:75/C:25 AQs=C:100 AJs=C:100 ATs=C:100 A9s=F:100 A8s=F:100 A7s=F:47.2/B:50 A5s=C:97.2 A4s=F:97.2 A3s=F:97.2 AKo=5:100 KK=5:75/C:25 KQs=C:100 KJs=C:100 KTs=C:48.6/F:51.4 K9s=F:100 AQo=C:100 KQo=F:100 QQ=5:75/C:25 QJs=C:100 QTs=C:48.6/F:51.4 Q9s=F:100 AJo=F:100 KJo=F:50/B:48.6 QJo=B:50 JJ=5:50/C:50 JTs=C:100 J9s=F:48.6/B:51.4 ATo=F:75/B:23.6 TT=C:100 T9s=C:63.9 T8s=B:47.2 99=C:98.6 88=C:98.6 87s=C:20.8 77=C:98.6 76s=C:20.8 66=C:98.6 65s=C:19.4 55=B:19.4 54s=C:34.7',
+  SB_vs_EP: 'AA=5:75/C:25 AKs=5:100 AQs=C:100 AJs=C:100 ATs=F:100 A9s=B:11.1 A5s=F:98.6 A4s=F:47.2/B:25 A3s=B:9.7 AKo=5:75/C:25 KK=5:100 KQs=C:50/F:50 KJs=F:100 KTs=F:100 AQo=F:100 QQ=5:34.7/C:65.3 QJs=F:100 QTs=F:100 JJ=5:23.6/C:76.4 JTs=C:48.6/F:51.4 TT=C:100 T9s=C:22.2/B:25 99=F:100 98s=F:48.6 88=F:29.2/B:15.3 87s=C:11.1 77=F:29.2/B:15.3 76s=C:11.1 65s=C:15.3 54s=C:27.8',
+  SB_vs_CO: 'AA=5:51.4/C:48.6 AKs=5:100 AQs=C:100 AJs=C:100 ATs=5:50/C:50 A9s=B:100 A5s=5:72.2/F:26.4 A4s=F:47.2/B:51.4 A3s=B:47.2 AKo=5:100 KK=5:100 KQs=C:100 KJs=C:100 KTs=F:100 K9s=B:48.6 AQo=C:51.4/F:48.6 KQo=F:51.4 QQ=5:50/C:50 QJs=C:50/F:50 QTs=F:100 AJo=F:51.4 JJ=5:50/C:50 JTs=C:48.6/F:51.4 J9s=F:50 TT=C:100 T9s=C:73.6 99=C:100 98s=B:11.1 88=C:100 87s=C:5.6 77=C:48.6/B:51.4 76s=C:20.8 66=B:48.6 65s=C:4.2/B:20.8 54s=C:4.2/B:20.8',
+  SB_vs_BTN: 'AA=5:34.7/C:65.3 AKs=5:100 AQs=C:100 AJs=C:100 ATs=C:100 A9s=C:48.6/F:51.4 A8s=F:100 A7s=F:47.2/B:50 A6s=B:98.6 A5s=5:97.2 A4s=5:45.8/C:51.4 A3s=F:45.8/B:51.4 A2s=B:84.7 AKo=5:100 KK=5:100 KQs=C:100 KJs=C:100 KTs=C:100 K9s=C:48.6/F:51.4 K8s=B:47.2 AQo=C:100 KQo=F:100 QQ=5:100 QJs=C:100 QTs=C:100 Q9s=F:100 AJo=F:100 KJo=F:50/B:48.6 JJ=5:50/C:50 JTs=C:100 J9s=F:100 ATo=F:50/B:48.6 TT=5:22.2/C:77.8 T9s=C:100 T8s=F:100 99=C:98.6 98s=C:15.3 88=C:98.6 87s=C:31.9 77=C:98.6 76s=C:20.8 66=C:98.6 65s=C:9.7 55=C:45.8/B:50 54s=C:2.8',
+  BB_vs_EP: 'AA=5:75/C:25 AKs=5:100 AQs=C:100 AJs=C:63.9 ATs=C:48.6 A9s=F:22.2/B:26.4 A8s=F:22.2/B:26.4 A5s=5:5.6/C:41.7 A4s=F:47.2 A3s=F:47.2 AKo=5:51.4/C:23.6 KK=5:65.3/C:34.7 KQs=C:75 KJs=C:30.6/F:33.3 KTs=F:50 K6s=F:20.8 K5s=F:20.8 K4s=B:20.8 AQo=F:23.6 KQo=B:23.6 QQ=5:50/C:50 QJs=C:30.6/F:33.3 QTs=F:50 Q9s=F:22.2/B:26.4 JJ=5:6.9/C:41.7 JTs=C:48.6 J9s=F:22.2/B:25 J8s=F:22.2 TT=C:22.2 T9s=C:33.3/B:15.3 T8s=F:22.2/B:26.4 98s=C:31.9/B:15.3 97s=F:20.8/B:26.4 87s=C:31.9/B:15.3 86s=F:20.8/B:25 76s=C:31.9/B:13.9 75s=F:20.8/B:25 65s=C:31.9/B:15.3 64s=F:20.8 54s=C:30.6/B:15.3 53s=F:20.8',
+  BB_vs_CO: 'AA=5:51.4/C:48.6 AKs=5:100 AQs=C:100 AJs=C:100 ATs=C:48.6 A9s=F:48.6 A8s=F:22.2 A5s=5:47.2/B:23.6 A4s=C:20.8/F:26.4/B:25 A3s=C:20.8/F:26.4/B:25 A2s=B:45.8 AKo=5:100 KK=5:100 KQs=C:100 KJs=C:63.9 KTs=C:48.6 K9s=F:22.2/B:26.4 AQo=C:23.6 KQo=F:23.6 QQ=5:50/C:50 QJs=C:100 QTs=F:100 Q9s=F:48.6 Q8s=F:22.2/B:26.4 AJo=F:23.6 KJo=F:23.6 QJo=F:23.6 JJ=5:50/C:50 JTs=C:100 J9s=F:48.6 J8s=F:22.2/B:26.4 TT=C:62.5 T9s=C:48.6 T8s=F:48.6 T7s=B:20.8 99=C:48.6 98s=C:48.6 97s=F:48.6 88=C:20.8 87s=C:48.6 86s=F:20.8/B:25 77=C:20.8 76s=C:47.2 75s=F:20.8/B:25 66=F:20.8 65s=C:47.2 64s=F:20.8/B:26.4 55=F:20.8 54s=C:47.2 53s=F:20.8',
+  BB_vs_BTN: 'AA=5:23.6/C:76.4 AKs=5:100 AQs=C:100 AJs=C:100 ATs=C:100 A9s=C:48.6 A8s=C:48.6 A5s=5:98.6 A4s=5:20.8/C:77.8 A3s=C:47.2 A2s=B:45.8 AKo=5:100 KK=5:100 KQs=C:100 KJs=C:100 KTs=C:100 K9s=C:48.6/B:23.6 K5s=B:47.2 AQo=C:100 KQo=F:50 QQ=5:100 QJs=C:100 QTs=C:100 Q9s=F:100 Q8s=F:31.9/B:34.7 AJo=F:50 KJo=F:50 QJo=F:33.3 JJ=5:50/C:50 JTs=C:100 J9s=C:50/F:50 J8s=F:48.6/B:23.6 J7s=F:31.9/B:34.7 KTo=B:33.3 QTo=B:33.3 JTo=F:33.3 TT=5:50/C:50 T9s=C:100 T8s=C:31.9/F:36.1/B:30.6 T7s=F:31.9/B:34.7 99=C:100 98s=C:73.6/B:26.4 97s=C:31.9/B:34.7 88=C:48.6 87s=C:73.6/B:26.4 86s=C:31.9/B:33.3 77=C:48.6 76s=C:72.2/B:25 75s=C:31.9/B:34.7 66=F:37.5 65s=C:72.2/B:25 64s=C:30.6 55=F:37.5 54s=C:47.2/B:50',
+  BB_vs_SB: 'AA=C:100 AKs=5:34.7/C:65.3 AQs=C:100 AJs=C:100 ATs=C:100 A9s=C:48.6 A5s=5:47.2/C:51.4 A4s=5:47.2/C:51.4 A3s=C:47.2 AKo=5:100 KK=5:23.6/C:76.4 KQs=C:100 KJs=C:100 KTs=C:73.6 K9s=C:48.6 K7s=C:48.6 K6s=C:47.2 AQo=5:23.6/C:76.4 KQo=C:50 QQ=5:75/C:25 QJs=5:33.3/C:66.7 QTs=C:48.6 Q9s=C:22.2 AJo=C:50 KJo=C:23.6 JJ=5:75/C:25 JTs=C:100 J9s=C:48.6 J6s=F:16.7 J5s=F:20.8 J4s=F:20.8 J3s=F:20.8 J2s=F:20.8 TT=5:50/C:50 T9s=C:73.6 T8s=C:48.6 T6s=F:26.4 T5s=F:37.5 T4s=F:36.1 T3s=F:36.1 T2s=F:36.1 K9o=F:12.5 Q9o=F:23.6 J9o=F:23.6 T9o=F:22.2 99=C:73.6 98s=C:73.6 97s=C:48.6 95s=F:15.3 94s=F:15.3 93s=F:15.3 K8o=F:29.2 Q8o=F:34.7 J8o=F:33.3 T8o=F:27.8 88=C:48.6 87s=C:73.6 86s=C:20.8 K7o=F:50 Q7o=B:50 J7o=F:22.2/B:26.4 T7o=F:22.2/B:25 97o=F:22.2 77=C:48.6 76s=C:72.2 75s=C:20.8 K6o=F:50 Q6o=B:23.6 86o=B:22.2 66=C:31.9 65s=C:72.2 64s=C:20.8 A5o=F:51.4 K5o=F:50 65o=B:47.2 54s=C:72.2 A4o=F:51.4 K4o=B:50 54o=B:20.8 A3o=F:51.4 K3o=B:23.6 A2o=F:51.4'
+};
+// the book's own printed combo counts, for the chart caption [5bet, call, fold]
+const FIVEBET_BOOK = {
+  MP_vs_UTG:[22.5,39.2,46.1], CO_vs_UTG:[22.5,44.4,46.5], CO_vs_MP:[23.8,55.5,46.0],
+  BTN_vs_UTG:[23.5,51.1,52.0], BTN_vs_MP:[23.5,60.3,63.9], BTN_vs_CO:[27.0,98.2,71.0],
+  SB_vs_EP:[27.1,35.2,54.0], SB_vs_CO:[36.0,62.2,35.0], SB_vs_BTN:[40.6,100.6,60.0],
+  BB_vs_EP:[22.4,39.7,26.6], BB_vs_CO:[33.0,62.5,39.0], BB_vs_BTN:[40.5,108.5,44.8],
+  BB_vs_SB:[35.3,129.3,92.2]
+};
+const FIVEBET = (() => {
+  const out = {};
+  for (const [key, spec] of Object.entries(FIVEBET_RAW)) {
+    const fills = {};
+    for (const tok of spec.trim().split(/\s+/)) {
+      const eq = tok.indexOf('=');
+      const note = tok.slice(0, eq);
+      fills[note] = tok.slice(eq + 1).split('/').map(p => {
+        const [k, pct] = p.split(':');
+        return { k, pct: parseFloat(pct), color: FIVEBET_COLORS[k] };
+      });
+    }
+    out[key] = { fills };
+  }
+  return out;
+})();
+const FIVEBET_MATCHUPS = Object.keys(FIVEBET);
+
 /* Range viewer grouping: long matchup lists become two levels —
    a "folder" row (hero position) plus the matchups inside it. */
 const VIEW_POS_ORDER = ['EP', 'UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'];
@@ -4175,6 +4247,19 @@ const VIEWS = {
       const rp = VS3BET_RANGEPCT[key];
       return { layers: vs3betLayers(VS3BET[key]), hero: null,
         title: key.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · 4-bet ' + rp.fb + '% / call ' + rp.cl + '%' };
+    }
+  },
+  fivebet: {
+    label: '5-Bet (PB3)', profiled: false, groupLabel: 'Hero', keyLabel: 'vs 4-Bettor',
+    groups: () => groupMatchupsByHero(FIVEBET_MATCHUPS, ['MP', 'CO', 'BTN', 'SB', 'BB']),
+    matrix: (prof, key) => {
+      const e = FIVEBET[key], bk = FIVEBET_BOOK[key] || [];
+      return {
+        layers: [], fills: e.fills, hero: null, restLabel: 'kein 3-Bet',
+        legend: ['5', 'C', 'F', 'B'].map(k => ({ label: FIVEBET_LABEL[k], color: FIVEBET_COLORS[k] })),
+        title: key.replace('_vs_', ' vs ').replace('EP', 'UTG/MP') +
+               ' · 5-bet ' + bk[0] + ' / call ' + bk[1] + ' / fold ' + bk[2] + ' combos'
+      };
     }
   },
   blinddef: {
