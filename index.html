@@ -133,6 +133,11 @@
   }
   .pill:hover { color: var(--text); }
   .pill.active { color: #7fd4ff; border-color: #3b7fa8; background: #14232e; }
+  /* viewer folder pills (hero / opener group) — accent green to separate the two levels */
+  .pill.folder { font-weight: 800; letter-spacing: 0.5px; }
+  .pill.folder.active { color: var(--green); border-color: var(--green-dark); background: #0e2419; }
+  .pill.folder .cnt { font-size: 0.58rem; font-family: var(--mono); color: var(--muted); margin-left: 5px; font-weight: 500; }
+  .pill.folder.active .cnt { color: var(--green-dark); }
 
   /* ---------- Mode info (concept primer) ---------- */
   .mode-info {
@@ -938,7 +943,8 @@
     </div>
     <div class="viewer-row"><span class="vr-label">Profil</span><span id="viewer-profiles"></span></div>
     <div class="viewer-row"><span class="vr-label">Spot</span><span id="viewer-views"></span></div>
-    <div class="viewer-row"><span class="vr-label">Range</span><span id="viewer-keys"></span></div>
+    <div class="viewer-row" id="viewer-group-row"><span class="vr-label" id="viewer-group-label">Hero</span><span id="viewer-groups"></span></div>
+    <div class="viewer-row"><span class="vr-label" id="viewer-key-label">Range</span><span id="viewer-keys"></span></div>
     <div class="viewer-matrix-wrap">
       <div class="viewer-title" id="viewer-title"></div>
       <div class="matrix" id="viewer-matrix"></div>
@@ -1223,7 +1229,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.0.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.1.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -4043,9 +4049,30 @@ function renderTrophies() {
 /* ================================================================
    Range Viewer — browse any chart without drilling
    ================================================================ */
+/* Range viewer grouping: long matchup lists become two levels —
+   a "folder" row (hero position) plus the matchups inside it. */
+const VIEW_POS_ORDER = ['EP', 'UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'];
+function groupMatchupsByHero(matchups, heroOrder) {
+  const by = {};
+  for (const k of matchups) {
+    const [hero, opp] = k.split('_vs_');
+    (by[hero] = by[hero] || []).push({ key: k, label: 'vs ' + opp, opp });
+  }
+  return heroOrder.filter(h => by[h]).map(h => ({
+    id: h, label: h,
+    keys: by[h]
+      .sort((a, b) => VIEW_POS_ORDER.indexOf(a.opp) - VIEW_POS_ORDER.indexOf(b.opp))
+      .map(x => ({ key: x.key, label: x.label }))
+  }));
+}
+// flattened key list for a view, grouped or not
+function viewKeys(view) {
+  return view.groups ? view.groups().flatMap(g => g.keys) : view.keys();
+}
+
 const VIEWS = {
   rfi: {
-    label: 'Open (RFI)', profiled: true,
+    label: 'Open (RFI)', profiled: true, keyLabel: 'Position',
     keys: () => HERO_POSITIONS.map(p => ({ key: p, label: p })),
     matrix: (prof, key) => {
       const d = RFI_DATA[prof][key];
@@ -4057,8 +4084,8 @@ const VIEWS = {
     }
   },
   vsopen: {
-    label: 'vs Open', profiled: true,
-    keys: () => VS_OPEN_MATCHUPS.map(k => ({ key: k, label: k.replace('_vs_', ' v ') })),
+    label: 'vs Open', profiled: true, groupLabel: 'Hero', keyLabel: 'vs Opener',
+    groups: () => groupMatchupsByHero(VS_OPEN_MATCHUPS, ['MP', 'CO', 'BTN', 'SB', 'BB']),
     matrix: (prof, key) => {
       const e = VS_OPEN_DATA[prof][key];
       const pct3 = rangePct(e.threeBet);
@@ -4068,9 +4095,9 @@ const VIEWS = {
     }
   },
   iso: {
-    label: 'ISO (vs limper)', profiled: false,
-    keys: () => ISO_HERO_POS.flatMap(p => [
-      { key: p + '|fish', label: p + ' v fish' }, { key: p + '|station', label: p + ' v station' }]),
+    label: 'ISO (vs limper)', profiled: false, groupLabel: 'Hero', keyLabel: 'Limper-Typ',
+    groups: () => ISO_HERO_POS.map(p => ({ id: p, label: p, keys: [
+      { key: p + '|fish', label: 'vs fish' }, { key: p + '|station', label: 'vs station' }] })),
     matrix: (prof, key) => {
       const [pos, profile] = key.split('|');
       const r = ISO_RANGES[profile][pos];
@@ -4081,8 +4108,16 @@ const VIEWS = {
     }
   },
   vs3bet: {
-    label: 'vs 3-Bet (PB3)', profiled: false,
-    keys: () => VS3BET_MATCHUPS.map(k => ({ key: k, label: k.replace('_OOP',' OOP').replace('_vs_',' v ').replace('_',' ') })),
+    label: 'vs 3-Bet (PB3)', profiled: false, groupLabel: 'Opener', keyLabel: '3-Better',
+    groups: () => {
+      const by = {};
+      for (const k of VS3BET_MATCHUPS) {
+        const pos = k.split('_')[0], rest = k.slice(pos.length + 1);
+        const label = rest === 'OOP' ? 'vs späte Pos. (OOP)' : rest.replace('vs_', 'vs ');
+        (by[pos] = by[pos] || []).push({ key: k, label });
+      }
+      return ['UTG', 'MP', 'CO', 'BTN', 'SB'].filter(p => by[p]).map(p => ({ id: p, label: p, keys: by[p] }));
+    },
     matrix: (prof, key) => {
       const rp = VS3BET_RANGEPCT[key];
       return { layers: vs3betLayers(VS3BET[key]), hero: null,
@@ -4090,8 +4125,8 @@ const VIEWS = {
     }
   },
   blinddef: {
-    label: 'Blind Def (PB3)', profiled: false,
-    keys: () => Object.keys(BLINDDEF).map(k => ({ key: k, label: BLINDDEF[k].label })),
+    label: 'Blind Def (PB3)', profiled: false, groupLabel: 'Hero', keyLabel: 'vs Opener',
+    groups: () => groupMatchupsByHero(Object.keys(BLINDDEF), ['SB', 'BB']),
     matrix: (prof, key) => {
       const e = BLINDDEF[key];
       const raiseSet = e.layers[0].set, callSet = e.layers[1].set;
@@ -4105,7 +4140,7 @@ let viewerState = { view: 'rfi', profile: 'gm', key: 'UTG' };
 function openViewer() {
   viewerState.profile = activeProfile();
   if (PROFILED_MODES.includes(activeModeId) && VIEWS[activeModeId]) viewerState.view = activeModeId;
-  viewerState.key = VIEWS[viewerState.view].keys()[0].key;
+  viewerState.key = viewKeys(VIEWS[viewerState.view])[0].key;
   $('viewer').classList.add('show');
   renderViewer();
 }
@@ -4134,20 +4169,45 @@ function renderViewer() {
     b.textContent = VIEWS[vid].label;
     b.addEventListener('click', () => {
       viewerState.view = vid;
-      viewerState.key = VIEWS[vid].keys()[0].key;
+      viewerState.key = viewKeys(VIEWS[vid])[0].key;
       renderViewer();
     });
     vRow.appendChild(b);
   }
-  // key row (positions / matchups)
-  const kRow = $('viewer-keys');
+
+  // folder row (hero / opener group) + key row, or a flat key row
+  const gRowWrap = $('viewer-group-row'), gRow = $('viewer-groups'), kRow = $('viewer-keys');
+  const kRowLabel = $('viewer-key-label');
   kRow.innerHTML = '';
-  for (const { key, label } of view.keys()) {
+  let keyList;
+  if (view.groups) {
+    const groups = view.groups();
+    // keep the folder in sync with the selected matchup
+    let g = groups.find(x => x.keys.some(k => k.key === viewerState.key));
+    if (!g) { g = groups[0]; viewerState.key = g.keys[0].key; }
+    viewerState.group = g.id;
+    gRowWrap.style.display = '';
+    $('viewer-group-label').textContent = view.groupLabel || 'Gruppe';
+    gRow.innerHTML = '';
+    for (const grp of groups) {
+      const b = document.createElement('button');
+      b.className = 'pill folder' + (grp.id === g.id ? ' active' : '');
+      b.innerHTML = grp.label + '<span class="cnt">' + grp.keys.length + '</span>';
+      b.addEventListener('click', () => { viewerState.key = grp.keys[0].key; renderViewer(); });
+      gRow.appendChild(b);
+    }
+    keyList = g.keys;
+  } else {
+    gRowWrap.style.display = 'none';
+    keyList = view.keys();
+  }
+  kRowLabel.textContent = view.keyLabel || 'Range';
+  for (const { key, label } of keyList) {
     const b = document.createElement('button');
     b.className = 'pill' + (key === viewerState.key ? ' active' : '');
     b.textContent = label;
-    b.style.fontSize = '0.64rem';
-    b.style.padding = '4px 9px';
+    b.style.fontSize = '0.66rem';
+    b.style.padding = '5px 11px';
     b.addEventListener('click', () => { viewerState.key = key; renderViewer(); });
     kRow.appendChild(b);
   }
@@ -4389,9 +4449,13 @@ if ('serviceWorker' in navigator) {
       setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);   // hourly check for long-open tabs
     } catch (e) {}
   });
+  // Only reload for a REAL update. On a first install the fresh worker calls
+  // clients.claim(), which also fires controllerchange — reloading there would
+  // bounce the page (and reset in-progress UI) on every first visit.
+  const hadControllerAtLoad = !!navigator.serviceWorker.controller;
   let reloadedOnce = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloadedOnce) return;
+    if (!hadControllerAtLoad || reloadedOnce) return;
     reloadedOnce = true;
     window.location.reload();
   });
