@@ -996,6 +996,7 @@
         <input type="file" id="import-file" accept="application/json" style="display:none">
       </div>
       <div class="backup-hint">Lädt deine Statistiken als Datei herunter, oder stellt sie auf einem anderen Gerät/Browser wieder her.</div>
+      <div class="backup-hint" id="storage-status" style="margin-top:6px"></div>
       <div class="backup-msg" id="backup-msg"></div>
     </div>
   </div>
@@ -1229,18 +1230,35 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.1.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.2.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
     missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}, handStats: {}
   }};
 }
+/* ---- durable storage -------------------------------------------------
+   Stats live in localStorage, which a browser may evict (iOS clears it for
+   unused sites; Chrome evicts under storage pressure) and which a second
+   open tab can clobber by writing its own stale copy. Three guards:
+   1. a mirrored BACKUP_KEY that never regresses to a smaller state,
+   2. load picks whichever copy holds MORE answered hands,
+   3. save refuses to overwrite a fuller stored state with an empty one.  */
+const BACKUP_KEY = 'preflop-trainer-v2-backup';
+const statsWeight = s => (s && s.grind && s.grind.counters && s.grind.counters.answers) || 0;
+function readStore(key) {
+  try { const o = JSON.parse(localStorage.getItem(key)); if (o && o.version === 2) return o; } catch(e) {}
+  return null;
+}
 function loadStats() {
-  try {
-    const v2 = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (v2 && v2.version === 2) return v2;
-  } catch(e) {}
+  const primary = readStore(STORE_KEY), backup = readStore(BACKUP_KEY);
+  let best = primary;
+  if (backup && (!best || statsWeight(backup) > statsWeight(best))) best = backup;
+  if (best) {
+    if (!best.grind) best.grind = freshStats().grind;
+    if (!best.grind.handStats) best.grind.handStats = {};
+    return best;
+  }
   const s = freshStats();
   try {
     const v1 = JSON.parse(localStorage.getItem(OLD_KEY));
@@ -1254,7 +1272,42 @@ function loadStats() {
   return s;
 }
 let stats = loadStats();
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(stats)); }
+function save(opts) {
+  const resetBackup = !!(opts && opts.resetBackup);
+  const w = statsWeight(stats);
+  // never let an apparently-reset in-memory copy wipe a populated save
+  if (!resetBackup && w === 0) {
+    const stored = readStore(STORE_KEY);
+    if (stored && statsWeight(stored) > 0) return;
+  }
+  stats.savedAt = Date.now();
+  const json = JSON.stringify(stats);
+  try { localStorage.setItem(STORE_KEY, json); } catch(e) {}
+  try {
+    const bk = readStore(BACKUP_KEY);
+    if (resetBackup || !bk || w >= statsWeight(bk)) localStorage.setItem(BACKUP_KEY, json);
+  } catch(e) {}
+}
+// Ask the browser not to evict our data (biggest cause of "my PWA lost my stats")
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persisted().then(p => { if (!p) return navigator.storage.persist(); }).catch(() => {});
+}
+// Another tab/window saved: adopt the fuller copy instead of overwriting it later
+window.addEventListener('storage', (e) => {
+  if (e.key !== STORE_KEY || !e.newValue) return;
+  try {
+    const incoming = JSON.parse(e.newValue);
+    if (incoming && incoming.version === 2 && statsWeight(incoming) > statsWeight(stats)) {
+      stats = incoming;
+      renderStats(); renderBuckets(); renderTiers(); renderLeaks(); renderTrophies();
+    }
+  } catch(_) {}
+});
+// Flush before the page goes away — a backgrounded mobile PWA can be killed without warning
+window.addEventListener('pagehide', () => { try { save(); } catch(_) {} });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { try { save(); } catch(_) {} }
+});
 function modeStats(id) {
   if (!stats.modes[id]) stats.modes[id] = { total:0, correct:0, streak:0, best:0, buckets:{} };
   return stats.modes[id];
@@ -1699,7 +1752,7 @@ $('btn-next').addEventListener('click', nextSpot);
 $('btn-reset').addEventListener('click', () => {
   if (!confirm('Reset ALL stats (every mode, badges, review queue)?')) return;
   stats = freshStats();
-  save();
+  save({ resetBackup: true });
   renderStats(); renderBuckets(); renderTiers(); renderLeaks(); renderTrophies(); renderFocusBar(); renderSpeedBar();
 });
 document.addEventListener('keydown', e => {
@@ -3909,7 +3962,7 @@ onGraded = (s, res) => {
   if (!g.history) g.history = [];
   if (g.counters.answers % 5 === 0) {
     g.history.push({ n: g.counters.answers, acc: g.recent.reduce((a, b) => a + b, 0) / g.recent.length });
-    if (g.history.length > 80) g.history.shift();
+    if (g.history.length > 400) g.history.shift();   // ~2000 hands of curve history
   }
   // tier-based difficulty unlock notification
   if (mode.tiered) {
@@ -4375,6 +4428,22 @@ function renderProgress() {
     '<div class="dash-tline" style="margin-top:8px"><span>Errors: too passive</span><span class="tv" style="color:var(--blue)">' + (dtot ? Math.round(passive / dtot * 100) : 0) + '%</span></div>' +
     '<div class="dash-tline"><span>Errors: too aggressive</span><span class="tv" style="color:var(--red)">' + (dtot ? Math.round(aggressive / dtot * 100) : 0) + '%</span></div>' +
     '<div class="dash-tline"><span>Mastered spots</span><span class="tv" style="color:var(--green)">' + (g.counters.mastered || 0) + '</span></div>';
+
+  // storage health — so silent data loss is visible instead of a surprise
+  const el = $('storage-status');
+  if (el) {
+    const bk = readStore(BACKUP_KEY);
+    const when = stats.savedAt ? new Date(stats.savedAt).toLocaleString() : '—';
+    const mirror = 'Sicherheitskopie im Gerät: ' + (bk ? statsWeight(bk) + ' Hände' : 'noch keine');
+    el.innerHTML = '💾 Zuletzt gespeichert: ' + when + ' · ' + mirror;
+    if (navigator.storage && navigator.storage.persisted) {
+      navigator.storage.persisted().then(p => {
+        el.innerHTML = '💾 Zuletzt gespeichert: ' + when + ' · ' + mirror +
+          '<br>' + (p ? '<span style="color:var(--green)">✓ Dauerhafter Speicher aktiv</span> — der Browser löscht deine Daten nicht.'
+                      : '<span style="color:var(--amber)">⚠ Speicher nicht als dauerhaft markiert</span> — der Browser könnte Daten löschen. Exportiere ab und zu.');
+      }).catch(() => {});
+    }
+  }
 }
 function openProgress() { renderProgress(); $('progress').classList.add('show'); $('backup-msg').textContent = ''; }
 function closeProgress() { $('progress').classList.remove('show'); }
@@ -4403,6 +4472,7 @@ function renderUpdateUI() {
 
 function applyUpdate() {
   if (!waitingWorker) return;
+  save();                                   // flush stats before the reload
   $('update-status').textContent = 'Wird aktualisiert…';
   waitingWorker.postMessage('SKIP_WAITING');
 }
@@ -4501,7 +4571,7 @@ $('import-file').addEventListener('change', (e) => {
     }
     if (!confirm('Aktuellen Fortschritt auf diesem Gerät mit der importierten Sicherung überschreiben? Das kann nicht rückgängig gemacht werden.')) return;
     stats = parsed;
-    save();
+    save({ resetBackup: true });
     if (stats.lastMode && MODES[stats.lastMode]) activeModeId = stats.lastMode;
     renderTabs(); renderStats(); renderBuckets(); renderFocusBar(); renderSpeedBar();
     renderLeaks(); renderTrophies(); renderProgress(); renderUpdateUI();
