@@ -715,7 +715,8 @@
   .cell.in-callmix { background: linear-gradient(135deg, var(--blue-dark) 50%, #182234 50%); }
   .cell.in-skip    { background: repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px); color: #b0bccb; }
   .cell.hero-cell {
-    outline: 2.5px solid var(--gold);
+    outline: 2.5px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.7);
     outline-offset: 1px;
     z-index: 1;
     color: #fff;
@@ -1242,7 +1243,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.4.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.5.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1930,7 +1931,8 @@ MODES.rfi = {
     return {
       correct, correctAction: ok[0],
       title, html,
-      matrix: {
+      matrix: (prof === 'pb3' && pb3FillMatrix('open', s.pos, s.notation,
+                 s.pos + ' open (PB3) · ' + PB3_BOOK_OPEN[s.pos] + ' combos')) || {
         layers, hero: s.notation,
         title: s.pos + ' open (' + PROFILES[prof].short + ') · ' + rangePct(d.open) + '%' +
                (d.mixed.size ? ' + ' + rangePct(d.mixed) + '% mix' : '')
@@ -2168,7 +2170,9 @@ MODES.vsopen = {
     return {
       correct, correctAction: primary,
       title, html,
-      matrix: {
+      matrix: (prof === 'pb3' && pb3FillMatrix('threebet', pb3ThreeBetKey(s.matchup), s.notation,
+                 s.matchup.replace('_vs_', ' vs ') + ' (PB3) · 3-bet ' +
+                 PB3_BOOK_3BET[pb3ThreeBetKey(s.matchup)] + ' combos')) || {
         layers, hero: s.notation,
         title: s.matchup.replace('_vs_', ' vs ') + ' (' + PROFILES[prof].short + ') · 3-bet ' + pct3 + '% / call ' + pctC + '%'
       },
@@ -3398,7 +3402,8 @@ MODES.vs3bet = {
       title,
       html: '<b>' + s.notation + '</b>: ' + (isMix ? '<b>' + okList.join(' or ') + '</b> are both fine' : '<b>' + okList[0] + '</b> is the play') + flavor +
             ' <span style="color:var(--muted)">(' + s.matchup.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · PB3)</span>',
-      matrix: {
+      matrix: pb3FillMatrix('fourbet', s.matchup, s.notation,
+                s.matchup.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · 4-bet ' + rp.fb + '% / call ' + rp.cl + '%') || {
         layers: vs3betLayers(VS3BET[s.matchup]), hero: s.notation,
         title: s.matchup.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · 4-bet ' + rp.fb + '% / call ' + rp.cl + '%'
       },
@@ -3562,7 +3567,9 @@ MODES.blinddef = {
       correct, correctAction: rec,
       title: correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec],
       html,
-      matrix: { layers: e.layers, hero: s.notation, title: e.label + ' · PB3 (borderline removed)' },
+      matrix: pb3FillMatrix('threebet', s.chart, s.notation,
+                e.label + ' · 3-bet ' + PB3_BOOK_3BET[s.chart] + ' combos') ||
+              { layers: e.layers, hero: s.notation, title: e.label + ' · PB3 (borderline removed)' },
       bucket: s.chart,
       tags: { handClass: handClass(s.notation),
               direction: correct ? null :
@@ -4260,6 +4267,16 @@ const PB3_BOOK_4BET = { UTG_OOP:[48.5,75.5,89.5], UTG_vs_blinds:[22,104.5,87],
   CO_vs_blinds:[45.7,148.2,168.1], BTN_vs_blinds:[66.2,211.2,290.6], SB_vs_BB:[103.6,209.8,280.6] };
 // the vs-Open drill splits UTG and MP, the book charts them together for the blinds
 const pb3ThreeBetKey = k => k.replace(/^(SB|BB)_vs_(UTG|MP)$/, '$1_vs_EP');
+const PB3_REST_LABEL = { open: 'Fold', threebet: 'Fold / Call', fourbet: 'kein Open', fivebet: 'kein 3-Bet' };
+// feedback-matrix drawn book-faithfully (proportional split cells) with the
+// played hand outlined — same look as the range viewer. Returns null when there
+// is no chart art for that spot so the caller can fall back to the plain layers.
+function pb3FillMatrix(section, key, hero, title) {
+  const fills = PB3_FILLS[section] && PB3_FILLS[section][key];
+  if (!fills) return null;
+  return { layers: [], fills, hero, legend: pb3Legend(section),
+           restLabel: PB3_REST_LABEL[section], title };
+}
 
 /* Range viewer grouping: long matchup lists become two levels —
    a "folder" row (hero position) plus the matchups inside it. */
