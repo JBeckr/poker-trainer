@@ -248,6 +248,17 @@
   .speed-bar .sb-pill:hover { color: var(--text); }
   .speed-bar .sb-pill.active { color: var(--gold); border-color: var(--gold-dark); background: #0e2419; }
   .speed-bar .sb-hint { color: var(--muted); font-size: 0.68rem; }
+  .dark-select {
+    background: #182234;
+    border: 1px solid var(--line-2);
+    color: var(--text);
+    border-radius: 7px;
+    padding: 5px 9px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    max-width: 220px;
+  }
+  .dark-select:focus { outline: 1px solid var(--green-dark); }
 
   /* ---------- Range viewer ---------- */
   .stat-btn {
@@ -982,7 +993,9 @@
         <div id="prog-curve"></div>
       </div>
       <div class="dash-card">
-        <div class="dash-h">Accuracy by hand</div>
+        <div class="dash-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px">Accuracy by hand
+          <select id="dash-heat-mode" class="dark-select" style="font-size:0.6rem;padding:3px 6px"></select>
+        </div>
         <div id="dash-heat"></div>
         <div class="dash-legend" id="dash-heat-legend"></div>
       </div>
@@ -1048,6 +1061,12 @@
   <span class="sb-label">⏱️ Auto-Weiter</span>
   <div class="sb-pills" id="sb-pills"></div>
   <span class="sb-hint">bei richtiger Antwort · Leertaste springt sofort</span>
+</div>
+
+<div class="speed-bar" id="filter-bar" style="display:none">
+  <span class="sb-label">🎯 Spot-Filter</span>
+  <select id="filter-select" class="dark-select"></select>
+  <span class="sb-hint" id="filter-hint">gezielt einen Spot drillen · Reviews pausieren solange</span>
 </div>
 
 <div class="table-wrap">
@@ -1243,11 +1262,11 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.5.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.6.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
-    missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}, handStats: {}
+    missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}, handStats: {}, handStatsM: {}
   }};
 }
 /* ---- durable storage -------------------------------------------------
@@ -1652,6 +1671,7 @@ function setMode(id) {
   renderStats();
   renderBuckets();
   renderFocusBar();
+  renderFilterBar();
   nextSpot();
 }
 
@@ -1750,6 +1770,11 @@ function onAction(actionId) {
       if (!stats.grind.handStats) stats.grind.handStats = {};
       const hs = stats.grind.handStats[hn] || (stats.grind.handStats[hn] = { t: 0, c: 0 });
       hs.t++; if (res.correct) hs.c++;
+      // per-mode as well, so the dashboard heatmap can be filtered by mode
+      const hm = stats.grind.handStatsM || (stats.grind.handStatsM = {});
+      const mm = hm[activeModeId] || (hm[activeModeId] = {});
+      const h2 = mm[hn] || (mm[hn] = { t: 0, c: 0 });
+      h2.t++; if (res.correct) h2.c++;
     }
   }
   // leak tags
@@ -1928,6 +1953,7 @@ MODES.rfi = {
              '(<span class="pct">' + rangePct(d.open) + '%</span>' +
              (d.mixed.size ? ' + ' + rangePct(d.mixed) + '% mixed' : '') + '). ' + POS_DESC[s.pos];
     }
+    if (prof === 'pb3') html += pb3FreqNote('open', s.pos, s.notation);
     return {
       correct, correctAction: ok[0],
       title, html,
@@ -2167,6 +2193,7 @@ MODES.vsopen = {
     if (isMix) title = (correct ? '✓ Fine — ' : '✗ ') + ok.map(a => labels[a]).join(' / ') + ' both OK';
     else title = correct ? '✓ Correct — ' + labels[primary]
                          : '✗ Not this time — correct play is ' + labels[primary];
+    if (prof === 'pb3') html += pb3FreqNote('threebet', pb3ThreeBetKey(s.matchup), s.notation);
     return {
       correct, correctAction: primary,
       title, html,
@@ -3401,7 +3428,8 @@ MODES.vs3bet = {
       correct, correctAction: [...ok][0],
       title,
       html: '<b>' + s.notation + '</b>: ' + (isMix ? '<b>' + okList.join(' or ') + '</b> are both fine' : '<b>' + okList[0] + '</b> is the play') + flavor +
-            ' <span style="color:var(--muted)">(' + s.matchup.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · PB3)</span>',
+            ' <span style="color:var(--muted)">(' + s.matchup.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · PB3)</span>' +
+            pb3FreqNote('fourbet', s.matchup, s.notation),
       matrix: pb3FillMatrix('fourbet', s.matchup, s.notation,
                 s.matchup.replace('_OOP',' OOP').replace('_vs_',' vs ').replace('_',' ') + ' · 4-bet ' + rp.fb + '% / call ' + rp.cl + '%') || {
         layers: vs3betLayers(VS3BET[s.matchup]), hero: s.notation,
@@ -3563,6 +3591,7 @@ MODES.blinddef = {
     if (e.hero === 'SB' && action === 'call') {
       html += '<br><b>PB3 rule:</b> the Small Blind has <i>no calling range at all</i> — 3-bet or fold (less rake, no squeezes, never a capped flat range).';
     }
+    html += pb3FreqNote('threebet', s.chart, s.notation);
     return {
       correct, correctAction: rec,
       title: correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec],
@@ -3936,20 +3965,66 @@ const MODE_INFO = {
   combos:   { title: 'Combos', text: 'Kapitel 9 — Combos zählen (Paare=6, Suited=4, Offsuit=12) und wie Card Removal (Blocker) sie schrumpft.' }
 };
 
+/* ---------------- Spot filter: drill one specific spot instead of random ----------------
+   Each entry maps a select choice onto the params the mode's deal() already accepts
+   (the same ones the review queue uses). Choice persists per mode in stats.spotFilter. */
+const SPOT_FILTERS = {
+  rfi: { options: () => HERO_POSITIONS.map(p => ({ key: p, label: p })),
+         toParams: k => ({ pos: k }) },
+  vsopen: { options: () => VS_OPEN_MATCHUPS.map(k => ({ key: k, label: k.replace('_vs_', ' vs ') })),
+            toParams: k => ({ matchup: k }) },
+  iso: { options: () => ISO_HERO_POS.flatMap(p => [
+           { key: p + '|fish', label: p + ' vs fish' }, { key: p + '|station', label: p + ' vs station' }]),
+         toParams: k => { const [heroPos, profile] = k.split('|'); return { heroPos, profile }; } },
+  vs3bet: { options: () => VS3BET_MATCHUPS.map(k => ({ key: k, label: k.replace('_OOP', ' OOP').replace('_vs_', ' vs ').replace('_', ' ') })),
+            toParams: k => ({ matchup: k }) },
+  blinddef: { options: () => Object.keys(BLINDDEF).map(k => ({ key: k, label: BLINDDEF[k].label })),
+              toParams: k => ({ chart: k }) },
+  stackdepth: { options: () => [40, 100, 200].map(d => ({ key: String(d), label: STACKDEPTH_LABEL[d] })),
+                toParams: k => ({ depth: parseInt(k, 10) }) }
+};
+function activeSpotFilter() {
+  const k = stats.spotFilter && stats.spotFilter[activeModeId];
+  return (k && SPOT_FILTERS[activeModeId]) ? k : null;
+}
+function renderFilterBar() {
+  const bar = $('filter-bar'), f = SPOT_FILTERS[activeModeId];
+  if (!f) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  const sel = $('filter-select');
+  sel.innerHTML = '<option value="">Alle Spots (zufällig)</option>' +
+    f.options().map(o => '<option value="' + o.key + '">' + o.label + '</option>').join('');
+  sel.value = activeSpotFilter() || '';
+  sel.onchange = () => {
+    if (!stats.spotFilter) stats.spotFilter = {};
+    stats.spotFilter[activeModeId] = sel.value || undefined;
+    save();
+    if (!answered) nextSpot();     // laufende Hand unter dem neuen Filter neu geben
+  };
+}
+
 schedule = (mode) => {
   const g = stats.grind;
   g.counters.sinceReview = (g.counters.sinceReview || 0) + 1;
-  const eligible = g.missQueue.filter(q => q.mode === activeModeId &&
-    (q.profile || 'gm') === spotProfile() && q.due <= g.counters.answers);
-  if (eligible.length && g.counters.sinceReview >= 5) {
-    g.counters.sinceReview = 0;
-    const item = eligible[0];
-    const s = mode.deal(item.params);
-    s.review = item;
-    s.table.review = true;
-    return s;
+  const filterKey = activeSpotFilter();
+  // While a filter is active, reviews from other spots would break the focus —
+  // they stay queued and get served once the filter is off again.
+  if (!filterKey) {
+    const eligible = g.missQueue.filter(q => q.mode === activeModeId &&
+      (q.profile || 'gm') === spotProfile() && q.due <= g.counters.answers);
+    if (eligible.length && g.counters.sinceReview >= 5) {
+      g.counters.sinceReview = 0;
+      const item = eligible[0];
+      const s = mode.deal(item.params);
+      s.review = item;
+      s.table.review = true;
+      return s;
+    }
   }
-  const s = mode.deal(mode.tiered ? { maxDiff: allowedDiff() } : undefined);
+  const params = Object.assign({},
+    filterKey ? SPOT_FILTERS[activeModeId].toParams(filterKey) : null,
+    mode.tiered ? { maxDiff: allowedDiff() } : null);
+  const s = mode.deal(Object.keys(params).length ? params : undefined);
   s.review = null;
   return s;
 };
@@ -4277,6 +4352,20 @@ function pb3FillMatrix(section, key, hero, title) {
   return { layers: [], fills, hero, legend: pb3Legend(section),
            restLabel: PB3_REST_LABEL[section], title };
 }
+// exact split frequencies as printed in the book, for the feedback text —
+// only shown when the cell is genuinely mixed (pure 100% cells stay silent)
+function pb3FreqNote(section, key, notation) {
+  const fills = PB3_FILLS[section] && PB3_FILLS[section][key];
+  const parts = fills && fills[notation];
+  if (!parts || !parts.length) return '';
+  const sum = parts.reduce((a, p) => a + p.pct, 0);
+  if (parts.length === 1 && sum >= 97.5) return '';
+  const bits = parts.map(p => Math.round(p.pct) + '% ' + PB3_FILL_LABELS[section][p.k]);
+  const rest = 100 - sum;
+  if (rest >= 2.5) bits.push(Math.round(rest) + '% ' + (PB3_REST_LABEL[section] || 'Fold'));
+  return '<br><span style="color:var(--muted)">📖 Buch-Frequenz: <b style="color:var(--ink-dim)">' +
+         bits.join(' / ') + '</b></span>';
+}
 
 /* Range viewer grouping: long matchup lists become two levels —
    a "folder" row (hero position) plus the matchups inside it. */
@@ -4538,6 +4627,7 @@ function accCell(acc) {           // mode-table cell tint
   if (acc >= 0.6) return { bg: 'rgba(251,191,36,0.20)', fg: 'var(--amber)' };
   return { bg: 'rgba(246,86,79,0.22)', fg: 'var(--red)' };
 }
+let dashHeatMode = '';   // heatmap filter: '' = alle Modi
 function renderProgress() {
   const g = stats.grind;
 
@@ -4569,8 +4659,18 @@ function renderProgress() {
   $('prog-curve').innerHTML = progressCurveSVG(g.history);
   $('prog-curve-sub').textContent = g.counters.answers ? '· rolling / last 20' : '';
 
-  // accuracy-by-hand heatmap (per-hand data, hand-class fallback)
-  const hs = g.handStats || {};
+  // accuracy-by-hand heatmap — filterable by mode ("Alle" additionally falls
+  // back to hand-class accuracy where a specific hand has too little data)
+  const hmSel = $('dash-heat-mode');
+  const hmModes = Object.keys(g.handStatsM || {}).filter(id => MODES[id]);
+  hmSel.innerHTML = '<option value="">Alle Modi</option>' +
+    hmModes.map(id => '<option value="' + id + '">' + MODES[id].label + '</option>').join('');
+  if (![...hmSel.options].some(o => o.value === dashHeatMode)) dashHeatMode = '';
+  hmSel.value = dashHeatMode;
+  hmSel.onchange = () => { dashHeatMode = hmSel.value; renderProgress(); };
+  const perMode = dashHeatMode && g.handStatsM ? g.handStatsM[dashHeatMode] : null;
+  const hs = perMode || g.handStats || {};
+  const minT = perMode ? 1 : 3;   // per-mode: show every played hand, global stays smoothed
   const classAgg = {};
   for (const [key, v] of Object.entries(g.tagStats || {})) {
     const cls = key.split('|')[1];
@@ -4583,8 +4683,8 @@ function renderProgress() {
     const notation = i === j ? hi + hi : (i < j ? hi + lo + 's' : lo + hi + 'o');
     let acc = null;
     const h = hs[notation];
-    if (h && h.t >= 3) acc = h.c / h.t;
-    else { const ca = classAgg[handClass(notation)]; if (ca && ca.t >= 5) acc = 1 - ca.m / ca.t; }
+    if (h && h.t >= minT) acc = h.c / h.t;
+    else if (!perMode) { const ca = classAgg[handClass(notation)]; if (ca && ca.t >= 5) acc = 1 - ca.m / ca.t; }
     const bg = acc == null ? '#182234' : accColor(acc);
     heat += '<div class="hc" style="background:' + bg + '" title="' + notation +
       (acc != null ? ' · ' + Math.round(acc * 100) + '%' : ' · no data') + '"></div>';
@@ -4800,6 +4900,7 @@ renderStats();
 renderBuckets();
 renderFocusBar();
 renderSpeedBar();
+renderFilterBar();
 renderLeaks();
 renderTrophies();
 renderUpdateUI();
