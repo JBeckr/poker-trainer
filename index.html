@@ -1262,7 +1262,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.6.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.6.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -3491,7 +3491,8 @@ const BLINDDEF_RAW = {
 const BLINDDEF = {};
 for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
   const parsed = parseScan(raw.cells);
-  const act = {};                       // hand -> 'raise' | 'call' (in-range hands only)
+  const act = {};                       // hand -> 'raise' | 'call' (modal action; in-range hands only)
+  const mix = new Set();                // genuine ~50/50 hands: 3-bet AND call are both correct
   const skip = new Set();               // clear borderline hands: removed from dealing
   const L = { raise: new Set(), call: new Set(), foldB: new Set(), foldL: new Set() };
   for (const lb of ALL_HAND_LABELS) {
@@ -3500,6 +3501,9 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     const three = fr['3'] || 0, call = fr['C'] || 0;   // real actions (solid colours)
     const bl3 = fr['B'] || 0, blC = fr['L'] || 0;      // borderline colours
     if (three + call >= 50) {           // ≥ half the cell is a real action → in the range
+      // Book plays some hands close to 50/50 between 3-bet and call — accept either
+      // when neither action clearly dominates (minority ≥ 40% of the real-action mass).
+      if (Math.min(three, call) / (three + call) >= 0.4) mix.add(lb);
       if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
       else { act[lb] = 'call'; L.call.add(lb); }
     } else {                            // clear borderline hand → removed from the drilled range
@@ -3509,7 +3513,7 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     }
   }
   const pool = ALL_HAND_LABELS.filter(lb => !skip.has(lb));
-  BLINDDEF[key] = { ...raw, act, skip, pool, layers: [
+  BLINDDEF[key] = { ...raw, act, mix, skip, pool, layers: [
     { set: L.raise, css: 'in-raise',    label: '3-bet' },
     { set: L.call,  css: 'in-call',     label: 'Call' },
     { set: L.foldB, css: 'in-bluffmix', label: 'Borderline 3-bet (removed)' },
@@ -3577,24 +3581,27 @@ MODES.blinddef = {
     const e = BLINDDEF[s.chart];
     const kind = e.act[s.notation] || 'fold';
     const rec = kind === 'raise' ? 'raise' : kind === 'call' ? 'call' : 'fold';
-    const correct = action === rec;
+    const isMix = e.mix && e.mix.has(s.notation);   // genuine 3-bet/call ~50/50 spot
+    const correct = isMix ? (action === 'raise' || action === 'call') : (action === rec);
     const labels = { raise: '3-BET', call: 'CALL', fold: 'FOLD' };
     const tbSize = pb3ThreeBetSize(s.opener, e.hero);
     let reason;
-    if (kind === 'raise') reason = e.hero === 'SB'
+    if (isMix) reason = '<b>3-bet or call</b> — the book plays this hand close to 50/50, so both are correct.';
+    else if (kind === 'raise') reason = e.hero === 'SB'
       ? '<b>3-bet to ' + fmtBB(tbSize) + 'bb</b> — the SB plays pure 3-bet-or-fold: initiative, fold equity, no capped flatting range, and it shuts the BB out.'
       : '<b>3-bet to ' + fmtBB(tbSize) + 'bb</b> — part of the BB\'s depolarized 3-bet range.';
     else if (kind === 'call') reason = '<b>call</b> — you close the action at a discount; too strong to fold, not a 3-bet.';
     else reason = '<b>fold</b> — outside the defending range (clear borderline hands are removed).';
     let html = '<b>' + s.notation + '</b>: ' + reason +
                ' <span style="color:var(--muted)">(' + e.label + ' · PB3, ≥50%-coloured cells)</span>';
-    if (e.hero === 'SB' && action === 'call') {
+    if (!isMix && e.hero === 'SB' && action === 'call') {
       html += '<br><b>PB3 rule:</b> the Small Blind has <i>no calling range at all</i> — 3-bet or fold (less rake, no squeezes, never a capped flat range).';
     }
     html += pb3FreqNote('threebet', s.chart, s.notation);
     return {
       correct, correctAction: rec,
-      title: correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec],
+      title: isMix ? (correct ? '✓ Fine — MIXED (3-bet or call)' : '✗ Not this time — 3-bet or call')
+                   : (correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec]),
       html,
       matrix: pb3FillMatrix('threebet', s.chart, s.notation,
                 e.label + ' · 3-bet ' + PB3_BOOK_3BET[s.chart] + ' combos') ||
