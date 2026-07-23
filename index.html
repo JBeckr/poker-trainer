@@ -475,6 +475,26 @@
     box-shadow: 0 0 14px rgba(244,199,79,0.5);
     display: none;
   }
+  .pot-pill {
+    position: absolute;
+    top: 6%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8,12,18,0.72);
+    border: 1px solid var(--line-2);
+    color: var(--ink-dim);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+    display: none;
+  }
+  .pot-pill.show { display: block; }
+  .pot-pill b { color: var(--green); }
+  .felt.with-board .pot-pill { top: 3%; }
   .seat {
     position: absolute;
     transform: translate(-50%, -50%);
@@ -1015,6 +1035,11 @@
     </div>
 
     <div class="dash-card" style="margin-top:12px">
+      <div class="dash-h">Trophy case</div>
+      <div class="trophies" id="dash-trophies"></div>
+    </div>
+
+    <div class="dash-card" style="margin-top:12px">
       <div class="dash-h">Backup</div>
       <div class="backup-row" style="margin-top:8px">
         <button class="backup-btn" id="btn-export">⬇ Export</button>
@@ -1073,6 +1098,7 @@
   <div class="table" id="table">
     <div class="felt" id="felt">
       <div class="brand">Grinder's Felt</div>
+      <div class="pot-pill" id="pot-pill"></div>
       <div class="prompt" id="prompt"></div>
       <div class="board-row" id="board"></div>
       <div class="review-chip" id="review-chip">★ REVIEW</div>
@@ -1110,15 +1136,7 @@
   <div class="pos-rows" id="pos-rows"></div>
 </div>
 
-<div class="pos-stats" id="leaks-panel" style="display:none">
-  <div class="ps-head"><div class="ps-title">Leak finder</div></div>
-  <div id="leak-rows"></div>
-</div>
-
-<div class="pos-stats" id="trophy-panel" style="display:none">
-  <div class="ps-head"><div class="ps-title">Trophy case</div></div>
-  <div class="trophies" id="trophies"></div>
-</div>
+<!-- Leak finder & trophy case now live only in the 📊 Dashboard, keeping the drill page lean -->
 
 <div class="toast" id="toast"></div>
 
@@ -1262,7 +1280,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.6.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.7.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1359,6 +1377,13 @@ function renderTable(spec) {
   tableEl.querySelectorAll('.seat, .dealer-btn').forEach(e => e.remove());
   feltEl.classList.toggle('with-board', !!(spec.board && spec.board.length));
   promptEl.textContent = spec.prompt || '';
+  const potEl = $('pot-pill');
+  if (spec.pot != null) {
+    potEl.classList.add('show');
+    potEl.innerHTML = '🪙 Pot <b>' + fmtBB(spec.pot) + 'bb</b>';
+  } else {
+    potEl.classList.remove('show');
+  }
   boardEl.innerHTML = '';
   if (spec.board) for (const c of spec.board) boardEl.appendChild(cardEl(c, true));
   $('review-chip').style.display = spec.review ? 'block' : 'none';
@@ -1687,7 +1712,7 @@ function renderModeInfo() {
 
 function renderFocusBar() {
   const bar = $('focus-bar');
-  bar.classList.toggle('show', activeModeId === 'rfi');   // openings only
+  bar.classList.toggle('show', FOCUS_MODES.has(activeModeId));   // all range-chart modes
   const t = $('fb-toggle');
   const on = focusOn();
   t.classList.toggle('on', on);
@@ -1718,6 +1743,7 @@ function nextSpot() {
   answered = false;
   const mode = MODES[activeModeId];
   spot = schedule(mode);            // Grind Loop may serve a review spot
+  if (spot.table) spot.table.pot = spot.potBB, spot.table.bet = spot.betBB;   // for the pot pill
   renderTable(spot.table);
   renderButtons(mode.buttons(spot));
   $('feedback').classList.remove('show');
@@ -1897,6 +1923,47 @@ function borderlineSet(prof, pos) {
   _borderCache[key] = [...out];
   return _borderCache[key];
 }
+// The chart modes that support the borderline-focus toggle
+const FOCUS_MODES = new Set(['rfi', 'vsopen', 'vs3bet', 'blinddef']);
+// Borderline = the tricky, non-obvious cells for a given spot (mixed-frequency /
+// near the boundary), i.e. the hands worth drilling hardest.
+function chartBorderline(modeId, key, prof) {
+  if (modeId === 'rfi') return borderlineSet(prof, key);
+  if (modeId === 'vsopen') {
+    if (prof === 'pb3') {
+      // PB3's vs-open data has no dual/bluff/callMixed sets (it was derived from the
+      // book charts). Take the borderline hands from the same source instead:
+      const ck = pb3ThreeBetKey(key);
+      if (BLINDDEF[ck]) return [...BLINDDEF[ck].border];       // SB/BB defense matchups
+      const fills = PB3_FILLS.threebet[ck];                    // MP/CO/BTN 3-bet-or-fold matchups
+      if (fills) {
+        const out = [];
+        for (const h in fills) {
+          const r = fills[h].filter(p => p.k === 'R').reduce((a, p) => a + p.pct, 0);
+          if (r > 5 && r < 95) out.push(h);                    // partially 3-bet = mixed cell
+        }
+        return out;
+      }
+    }
+    const e = VS_OPEN_DATA[prof][key];
+    return [...new Set([...e.dual, ...e.bluff, ...e.callMixed])];
+  }
+  if (modeId === 'vs3bet') {
+    const m = VS3BET[key], out = [];
+    for (const h in m) if (m[h].actions.size > 1 || m[h].hasB) out.push(h);
+    return out;
+  }
+  if (modeId === 'blinddef') return [...(BLINDDEF[key].border || [])];
+  return [];
+}
+// pick a hand for a chart mode: ~95% from the borderline pool when focus is on
+function focusPickNotation(modeId, key, prof, randomFn) {
+  if (focusOn()) {
+    const bl = chartBorderline(modeId, key, prof);
+    if (bl.length && Math.random() < 0.95) return pick(bl);
+  }
+  return randomFn();
+}
 function focusOn() { return stats.focusBorderline !== false; }  // default ON
 
 MODES.rfi = {
@@ -1913,9 +1980,8 @@ MODES.rfi = {
     if (params && params.notation) {                 // review re-serve: exact hand
       notation = params.notation;
       cards = cardsForNotation(notation);
-    } else if (focusOn() && Math.random() < 0.85) {  // bias toward the decision boundary
-      const bl = borderlineSet(spotProfile('rfi'), pos);
-      notation = pick(bl);
+    } else if (focusOn() && borderlineSet(spotProfile('rfi'), pos).length && Math.random() < 0.95) {
+      notation = pick(borderlineSet(spotProfile('rfi'), pos));   // drill the decision boundary hard
       cards = cardsForNotation(notation);
     } else {                                          // occasional fully-random hand for variety
       cards = dealHand();
@@ -2150,8 +2216,9 @@ MODES.vsopen = {
   deal(params) {
     const key = (params && params.matchup) || pick(VS_OPEN_MATCHUPS);
     const [hero, opener] = key.split('_vs_');
-    const cards = params && params.notation ? cardsForNotation(params.notation) : dealHand();
-    const notation = handNotation(cards);
+    const notation = (params && params.notation) ||
+      focusPickNotation('vsopen', key, spotProfile('vsopen'), () => handNotation(dealHand()));
+    const cards = cardsForNotation(notation);
     const size = OPEN_SIZE[opener];
     const seats = foldedToHero(hero);
     seats[opener] = { folded: false, chip: 'RAISE ' + size + 'bb', chipClass: 'chip-raise' };
@@ -3388,7 +3455,8 @@ MODES.vs3bet = {
   deal(params) {
     const key = (params && params.matchup) || pick(VS3BET_MATCHUPS);
     const m = VS3BET_META[key];
-    const notation = (params && params.notation) || pick(Object.keys(VS3BET[key]));
+    const notation = (params && params.notation) ||
+      focusPickNotation('vs3bet', key, null, () => pick(Object.keys(VS3BET[key])));
     const cards = cardsForNotation(notation);
     const seats = {};
     const heroIdx = ALL_POS.indexOf(m.opener);
@@ -3493,6 +3561,7 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
   const parsed = parseScan(raw.cells);
   const act = {};                       // hand -> 'raise' | 'call' (modal action; in-range hands only)
   const mix = new Set();                // genuine ~50/50 hands: 3-bet AND call are both correct
+  const border = new Set();             // tricky cells for the borderline-focus drill
   const skip = new Set();               // clear borderline hands: removed from dealing
   const L = { raise: new Set(), call: new Set(), foldB: new Set(), foldL: new Set() };
   for (const lb of ALL_HAND_LABELS) {
@@ -3503,17 +3572,19 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     if (three + call >= 50) {           // ≥ half the cell is a real action → in the range
       // Book plays some hands close to 50/50 between 3-bet and call — accept either
       // when neither action clearly dominates (minority ≥ 40% of the real-action mass).
-      if (Math.min(three, call) / (three + call) >= 0.4) mix.add(lb);
+      if (Math.min(three, call) / (three + call) >= 0.4) { mix.add(lb); border.add(lb); }
       if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
       else { act[lb] = 'call'; L.call.add(lb); }
+      if (bl3 || blC || three + call < 72) border.add(lb);   // marginal / partly-borderline include
     } else {                            // clear borderline hand → removed from the drilled range
       skip.add(lb);
+      if (three + call >= 35) border.add(lb);                // the tricky just-below-the-cut folds
       if (bl3 >= blC && bl3 > 0) L.foldB.add(lb);
       else if (blC > 0) L.foldL.add(lb);
     }
   }
   const pool = ALL_HAND_LABELS.filter(lb => !skip.has(lb));
-  BLINDDEF[key] = { ...raw, act, mix, skip, pool, layers: [
+  BLINDDEF[key] = { ...raw, act, mix, border, skip, pool, layers: [
     { set: L.raise, css: 'in-raise',    label: '3-bet' },
     { set: L.call,  css: 'in-call',     label: 'Call' },
     { set: L.foldB, css: 'in-bluffmix', label: 'Borderline 3-bet (removed)' },
@@ -3560,9 +3631,11 @@ MODES.blinddef = {
     if (!notation) {
       // Focus on real decisions (3-bet / call / borderline). Plain grey folds are the
       // bulk of the grid — especially in the SB's 3-bet-or-fold charts — so serve them
-      // only ~20% of the time as calibration, like the RFI borderline focus.
+      // only ~20% of the time as calibration. With the focus toggle on, drill the
+      // tricky borderline cells ~95% of the time instead.
       const actionHands = Object.keys(e.act);
-      notation = (actionHands.length && Math.random() < 0.8) ? pick(actionHands) : pick(e.pool);
+      notation = focusPickNotation('blinddef', chart, null,
+        () => (actionHands.length && Math.random() < 0.8) ? pick(actionHands) : pick(e.pool));
     }
     const opener = (params && params.opener) || pick(e.openers);
     const cards = cardsForNotation(notation);
@@ -3903,7 +3976,7 @@ MODES.threebetpot = {
     for (const p of ALL_POS) { if (p === 'BTN') continue; seats[p] = { folded: p !== opener }; }
     seats[opener] = { folded: false, chip: 'CALLED 3-BET', chipClass: 'chip-call' };
     return {
-      opener, board: cards,
+      opener, board: cards, potBB: 18,   // ~18bb 3-bet pot flop: far bigger than a 5.5bb SRP
       table: {
         heroPos: 'BTN', board: cards,
         prompt: opener + ' opens, you 3-bet from the BTN, ' + opener + ' calls. C-bet your range or check?',
@@ -4132,6 +4205,7 @@ function renderLeaks() {
       (pas > agg ? 'trust the ranges and pull the trigger.' : 'slow down; not every hand is a raise.') + '</div>');
   }
   const panel = $('leaks-panel');
+  if (!panel) return;                 // leaks now live in the dashboard only
   if (rows.length) { panel.style.display = 'block'; $('leak-rows').innerHTML = rows.join(''); }
   else panel.style.display = 'none';
 }
@@ -4209,10 +4283,9 @@ function checkBadges() {
   }
 }
 function renderTrophies() {
-  const anyProgress = stats.grind.counters.answers > 0 || stats.grind.badges.length > 0;
-  $('trophy-panel').style.display = anyProgress ? 'block' : 'none';
-  if (!anyProgress) return;
-  $('trophies').innerHTML = BADGES.map(b => {
+  const box = $('dash-trophies');   // trophy case now lives in the dashboard
+  if (!box) return;
+  box.innerHTML = BADGES.map(b => {
     const un = stats.grind.badges.includes(b.id);
     return '<div class="trophy' + (un ? '' : ' locked') + '" title="' + b.blurb + '">' +
            b.icon + ' <span class="t-name">' + b.name + '</span></div>';
