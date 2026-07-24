@@ -808,9 +808,11 @@
   .cell.hero-cell {
     outline: 3px solid #ffffff;
     outline-offset: 2px;
-    box-shadow: 0 0 0 2px rgba(0,0,0,0.85), 0 0 18px 5px rgba(255,255,255,0.95);
+    /* only a whisper of dark for edge separation, then a full-strength white
+       halo — the old 2px black ring was reading as a grey frame on small cells */
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.45), 0 0 24px 7px rgba(255,255,255,1);
     transform: scale(1.22);            /* lift the played hand above the grid */
-    z-index: 3;
+    z-index: 4;
     color: #fff;
     font-weight: 800;
   }
@@ -1371,7 +1373,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.10.2';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.10.3';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
