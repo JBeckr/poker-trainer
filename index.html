@@ -769,6 +769,15 @@
     grid-auto-rows: 24px;
     gap: 2px;
   }
+  /* Desktop: the feedback grid used to sit as a cramped 24px third column, so
+     the range read small and dark. Give it its own full-width row with larger,
+     more vivid cells (below 940px it already goes full-width). Scoped to #matrix
+     so the Range Viewer grid is untouched. */
+  @media (min-width: 941px) {
+    .feedback .matrix-panel { flex: 1 1 100%; }
+    #matrix { grid-template-columns: repeat(13, 38px); grid-auto-rows: 38px; gap: 3px; justify-content: center; }
+    #matrix .cell { font-size: 0.8rem; }
+  }
   .cell {
     font-size: 0.55rem;
     display: flex;
@@ -1362,7 +1371,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.10.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.10.2';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
