@@ -1408,7 +1408,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.11.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.11.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2508,11 +2508,14 @@ MODES.vsopen = {
     if (isMix) title = (correct ? '✓ Fine — ' : '✗ ') + ok.map(a => labels[a]).join(' / ') + ' both OK';
     else title = correct ? '✓ Correct — ' + labels[primary]
                          : '✗ Not this time — correct play is ' + labels[primary];
-    if (prof === 'pb3') html += pb3FreqNote('threebet', pb3ThreeBetKey(s.matchup), s.notation);
+    // blind-defense matchups carry a real flatting range → show the green call
+    // chart (vsOpenLayers), not the polarized 3-bet-section fill chart
+    const bdKey = prof === 'pb3' ? PB3_VO_TO_BLINDDEF[s.matchup] : null;
+    if (prof === 'pb3' && !bdKey) html += pb3FreqNote('threebet', pb3ThreeBetKey(s.matchup), s.notation);
     return {
       correct, correctAction: primary,
       title, html,
-      matrix: (prof === 'pb3' && pb3FillMatrix('threebet', pb3ThreeBetKey(s.matchup), s.notation,
+      matrix: (prof === 'pb3' && !bdKey && pb3FillMatrix('threebet', pb3ThreeBetKey(s.matchup), s.notation,
                  s.matchup.replace('_vs_', ' vs ') + ' (PB3) · 3-bet ' +
                  PB3_BOOK_3BET[pb3ThreeBetKey(s.matchup)] + ' combos')) || {
         layers, hero: s.notation,
@@ -3860,21 +3863,26 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
 // PB3's SB/BB defense charts don't distinguish 3-bet value from 3-bet bluffs (unlike the
 // 3BET-section charts used for the MP/CO/BTN matchups above), so every 'raise' hand here
 // is a single-answer value 3-bet (bluffStrict semantics don't apply — bluff stays empty).
+// vs-Open PB3 blind-defense matchup → its BLINDDEF source chart. Exposed at module
+// scope so the grader can render the pixel-scanned blind-defense chart (with its
+// green flatting range) instead of the polarized 3-bet-section chart.
+const PB3_VO_TO_BLINDDEF = {
+  SB_vs_UTG: 'SB_vs_EP', SB_vs_MP: 'SB_vs_EP', SB_vs_CO: 'SB_vs_CO', SB_vs_BTN: 'SB_vs_BTN',
+  BB_vs_UTG: 'BB_vs_EP', BB_vs_MP: 'BB_vs_EP', BB_vs_CO: 'BB_vs_CO', BB_vs_BTN: 'BB_vs_BTN', BB_vs_SB: 'BB_vs_SB'
+};
 (function patchVsOpenFromBlindDef() {
-  const map = {
-    SB_vs_UTG: ['SB_vs_EP', 'linear'], SB_vs_MP: ['SB_vs_EP', 'linear'],
-    SB_vs_CO:  ['SB_vs_CO', 'linear'], SB_vs_BTN: ['SB_vs_BTN', 'linear'],
-    BB_vs_UTG: ['BB_vs_EP', undefined], BB_vs_MP: ['BB_vs_EP', undefined],
-    BB_vs_CO:  ['BB_vs_CO', undefined], BB_vs_BTN: ['BB_vs_BTN', undefined], BB_vs_SB: ['BB_vs_SB', undefined]
-  };
-  for (const [voKey, [bdKey, style]] of Object.entries(map)) {
+  const linear = new Set(['SB_vs_UTG','SB_vs_MP','SB_vs_CO','SB_vs_BTN']);
+  for (const [voKey, bdKey] of Object.entries(PB3_VO_TO_BLINDDEF)) {
     const e = BLINDDEF[bdKey];
-    const value = new Set(), call = new Set();
+    const value = new Set(), call = new Set(), dual = new Set();
     for (const [hand, act] of Object.entries(e.act)) {
-      if (act === 'raise') value.add(hand); else call.add(hand);
+      if (e.mix.has(hand)) dual.add(hand);              // book plays it ~50/50 → 3-bet OR call both fine
+      else if (act === 'raise') value.add(hand);
+      else call.add(hand);                              // pure flat (the book's green cells)
     }
-    VS_OPEN_DATA.pb3[voKey] = { value, bluff: new Set(), dual: new Set(), call, callMixed: new Set(),
-      style, bluffStrict: false, threeBet: new Set(value) };
+    VS_OPEN_DATA.pb3[voKey] = { value, bluff: new Set(), dual, call, callMixed: new Set(),
+      style: linear.has(voKey) ? 'linear' : undefined, bluffStrict: false,
+      threeBet: new Set([...value, ...dual]) };
   }
 })();
 
