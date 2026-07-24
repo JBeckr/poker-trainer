@@ -279,6 +279,17 @@
   }
   .stat-btn:hover { border-color: var(--gold-dark); }
   .stat-btn .lbl { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  /* ---------- Daily training HUD (header) ---------- */
+  .daily-hud { flex-direction: row; gap: 8px; padding: 5px 12px; }
+  .dh-ring {
+    width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    background: conic-gradient(#38bdf8 0%, #26324a 0% 100%);
+  }
+  .dh-ring::before { content: ''; position: absolute; inset: 3.5px; border-radius: 50%; background: var(--panel); }
+  .dh-num { position: relative; z-index: 1; font-size: 0.52rem; font-family: var(--mono); font-weight: 700; color: var(--text); }
+  .daily-hud.met .dh-num { color: var(--green); }
+  .dh-flame { font-size: 0.88rem; font-weight: 700; color: var(--amber); font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .stat-btn.has-update::after {
     content: '';
     position: absolute;
@@ -373,6 +384,31 @@
   .dash-card { background: #0c111a; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
   .dash-h { font-family: var(--mono); font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-dim); margin-bottom: 10px; }
   .dash-h .dash-hsub { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); margin-left: 6px; }
+  /* ---------- Daily training (dashboard card) ---------- */
+  .daily-card { margin-bottom: 12px; }
+  .daily-top { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .daily-streak { display: flex; align-items: center; gap: 8px; }
+  .daily-streak .ds-flame { font-size: 1.7rem; line-height: 1; }
+  .daily-streak .ds-n { font-family: var(--mono); font-size: 1.9rem; font-weight: 700; line-height: 1; }
+  .daily-streak .ds-l { font-family: var(--mono); font-size: 0.54rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); line-height: 1.25; }
+  .daily-prog { flex: 1; min-width: 170px; }
+  .daily-prog .dp-row { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.62rem; color: var(--muted); margin-bottom: 5px; }
+  .daily-prog .dp-bar { height: 9px; border-radius: 5px; background: #182234; overflow: hidden; }
+  .daily-prog .dp-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--blue), var(--green)); width: 0; transition: width .45s ease; }
+  .daily-prog.met .dp-fill { background: var(--green); }
+  .goal-set { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .goal-set button { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; font-weight: 700; font-size: 0.9rem; line-height: 1; }
+  .goal-set button:hover { border-color: var(--gold-dark); }
+  .goal-set .gs-val { min-width: 26px; text-align: center; font-size: 0.95rem; color: var(--text); font-weight: 700; }
+  .cal-wrap { margin-top: 14px; overflow-x: auto; }
+  .cal-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); gap: 3px; width: max-content; }
+  .cal-grid .cd { width: 12px; height: 12px; border-radius: 3px; background: #182234; }
+  .cal-legend { display: flex; align-items: center; gap: 5px; margin-top: 9px; font-family: var(--mono); font-size: 0.54rem; color: var(--muted); }
+  .cal-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  /* goal-reached confetti */
+  .confetti-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; overflow: hidden; }
+  .confetti-pc { position: absolute; top: -18px; width: 8px; height: 13px; opacity: 0.95; animation: confetti-fall linear forwards; }
+  @keyframes confetti-fall { to { transform: translateY(108vh) rotate(760deg); } }
   /* heatmap */
   #dash-heat { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; }
   #dash-heat .hc { aspect-ratio: 1; border-radius: 3px; }
@@ -980,6 +1016,10 @@
     <button class="stat-btn" id="btn-progress">📊 Dashboard<span class="lbl">Analyse</span></button>
     <button class="stat-btn" id="btn-viewer">📖 Ranges<span class="lbl">ansehen</span></button>
     <button class="stat-btn" id="btn-update">🔄 Updates<span class="lbl" id="update-lbl">aktuell</span></button>
+    <button class="stat-btn daily-hud" id="daily-hud" title="Daily-Training – zum Dashboard">
+      <span class="dh-ring" id="dh-ring"><span class="dh-num" id="dh-num">0</span></span>
+      <span class="dh-flame" id="dh-flame">🔥 0</span>
+    </button>
     <div class="stat"><div class="val good" id="stat-score">0/0</div><div class="lbl">Score</div></div>
     <div class="stat"><div class="val" id="stat-acc">–</div><div class="lbl">Accuracy</div></div>
     <div class="stat"><div class="val streak" id="stat-streak">0</div><div class="lbl">Streak</div></div>
@@ -1021,6 +1061,32 @@
     <div class="dash-sub" id="dash-sub"></div>
 
     <div class="dash-kpis" id="dash-kpis"></div>
+
+    <div class="dash-card daily-card">
+      <div class="dash-h">Daily training</div>
+      <div class="daily-top">
+        <div class="daily-streak">
+          <span class="ds-flame">🔥</span>
+          <span class="ds-n" id="daily-streak-n">0</span>
+          <span class="ds-l">Tage<br>in Folge</span>
+        </div>
+        <div class="daily-prog" id="daily-prog">
+          <div class="dp-row"><span id="daily-prog-lab">Heute 0/50 Hände</span><span id="daily-prog-pct">0%</span></div>
+          <div class="dp-bar"><div class="dp-fill" id="daily-prog-fill"></div></div>
+        </div>
+        <div class="goal-set">Ziel
+          <button id="goal-minus" aria-label="Ziel senken">−</button>
+          <span class="gs-val" id="goal-val">50</span>
+          <button id="goal-plus" aria-label="Ziel erhöhen">+</button>
+        </div>
+      </div>
+      <div class="cal-wrap">
+        <div class="cal-grid" id="daily-cal"></div>
+        <div class="cal-legend">Letzte 13 Wochen<span style="margin-left:10px">weniger</span>
+          <i style="background:#182234"></i><i style="background:#0e4728"></i><i style="background:#15723f"></i><i style="background:#1f9d63"></i><i style="background:#2bd47e"></i>
+          mehr</div>
+      </div>
+    </div>
 
     <div class="dash-grid">
       <div class="dash-card">
@@ -1295,11 +1361,12 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.9.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.10.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
-    missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}, handStats: {}, handStatsM: {}
+    missQueue: [], rings: {}, badges: [], counters: { answers: 0 }, tagStats: {}, dirStats: {}, handStats: {}, handStatsM: {},
+    daily: { goal: 50, days: {} }
   }};
 }
 /* ---- durable storage -------------------------------------------------
@@ -1322,6 +1389,7 @@ function loadStats() {
   if (best) {
     if (!best.grind) best.grind = freshStats().grind;
     if (!best.grind.handStats) best.grind.handStats = {};
+    if (!best.grind.daily) best.grind.daily = { goal: 50, days: {} };
     return best;
   }
   const s = freshStats();
@@ -1603,6 +1671,7 @@ function renderStats() {
   $('stat-acc').textContent = ms.total ? Math.round(ms.correct / ms.total * 100) + '%' : '–';
   $('stat-streak').textContent = ms.streak;
   $('stat-best').textContent = ms.best;
+  renderDailyHud();
 }
 function renderBuckets() {
   const mode = MODES[activeModeId];
@@ -1790,6 +1859,112 @@ function heroNotation(sp) {
   return hi.rank + lo.rank + (a.suit === b.suit ? 's' : 'o');
 }
 
+/* ---------------- Daily training tracker ----------------
+   Every answered hand is tallied into a per-day count; a day is "done" once it
+   reaches the goal. The streak is the run of consecutive done-days ending today
+   (today stays pending until met, so it never breaks the streak early), forgiving
+   ONE missed day per rolling 7-day window (graces must sit >=7 days apart). All of
+   this derives from the day tally, so it survives reloads and clock quirks. */
+const DAY_MS = 86400000;
+function dayKey(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function dailyData() {
+  const g = stats.grind;
+  if (!g.daily || typeof g.daily !== 'object') g.daily = { goal: 50, days: {} };
+  if (typeof g.daily.goal !== 'number') g.daily.goal = 50;
+  if (!g.daily.days) g.daily.days = {};
+  return g.daily;
+}
+function dailyGoal() { return dailyData().goal || 50; }
+function todayCount() { return dailyData().days[dayKey()] || 0; }
+function computeStreak() {
+  const d = dailyData(), goal = d.goal || 50, days = d.days;
+  const keys = Object.keys(days).filter(k => days[k] > 0);
+  if (!keys.length) return 0;
+  const earliest = keys.sort()[0];                 // 'YYYY-MM-DD' sorts chronologically
+  const met = k => (days[k] || 0) >= goal;
+  let cur = new Date(); cur.setHours(0, 0, 0, 0);
+  if (!met(dayKey(cur))) cur = new Date(cur.getTime() - DAY_MS);   // today still pending → not a break
+  let streak = 0, lastGrace = null, guard = 0;
+  while (dayKey(cur) >= earliest && guard++ < 800) {
+    if (met(dayKey(cur))) streak++;
+    else if (lastGrace === null || (lastGrace.getTime() - cur.getTime()) >= 7 * DAY_MS) lastGrace = new Date(cur);
+    else break;                                    // second miss inside a week ends the streak
+    cur = new Date(cur.getTime() - DAY_MS);
+  }
+  return streak;
+}
+function recordDailyHand() {
+  const d = dailyData(), k = dayKey(), goal = d.goal || 50;
+  const before = d.days[k] || 0;
+  d.days[k] = before + 1;
+  if (before < goal && d.days[k] >= goal) onDailyGoalReached();   // crossed the goal just now
+}
+function onDailyGoalReached() {
+  const s = computeStreak();
+  showToast('🎉 Tagesziel erreicht! ' + dailyGoal() + ' Hände · Streak ' + s + (s === 1 ? ' Tag' : ' Tage'));
+  confettiBurst();
+}
+function confettiBurst() {
+  const layer = document.createElement('div');
+  layer.className = 'confetti-layer';
+  const colors = ['#2bd47e', '#38bdf8', '#fbbf24', '#ff8a3d', '#ffffff'];
+  for (let i = 0; i < 44; i++) {
+    const pc = document.createElement('div');
+    pc.className = 'confetti-pc';
+    pc.style.left = (Math.random() * 100).toFixed(1) + 'vw';
+    pc.style.background = colors[i % colors.length];
+    pc.style.animationDuration = (1 + Math.random() * 0.9).toFixed(2) + 's';
+    pc.style.animationDelay = (Math.random() * 0.25).toFixed(2) + 's';
+    pc.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
+    layer.appendChild(pc);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 2500);
+}
+const CAL_COLORS = ['#182234', '#0e4728', '#15723f', '#1f9d63', '#2bd47e'];
+function calColor(count, goal) {
+  if (!count) return CAL_COLORS[0];
+  if (count >= goal) return CAL_COLORS[4];
+  const r = count / goal;
+  return r >= 0.66 ? CAL_COLORS[3] : r >= 0.33 ? CAL_COLORS[2] : CAL_COLORS[1];
+}
+function renderDailyHud() {
+  const hud = $('daily-hud'); if (!hud) return;
+  const streak = computeStreak(), count = todayCount(), goal = dailyGoal();
+  const pct = Math.min(100, Math.round(count / goal * 100)), met = count >= goal;
+  hud.classList.toggle('met', met);
+  $('dh-ring').style.background = 'conic-gradient(' + (met ? 'var(--green)' : '#38bdf8') + ' ' + pct + '%, #26324a ' + pct + '% 100%)';
+  $('dh-num').textContent = met ? '✓' : (count > 99 ? '99' : count);
+  $('dh-flame').textContent = '🔥 ' + streak;
+  hud.title = 'Daily-Training: ' + count + '/' + goal + ' Hände heute · Streak ' + streak + ' Tage — zum Dashboard';
+}
+function renderDailyCard() {
+  if (!$('daily-cal')) return;
+  const d = dailyData(), goal = d.goal || 50, count = todayCount(), streak = computeStreak();
+  const pct = Math.min(100, Math.round(count / goal * 100)), met = count >= goal;
+  $('daily-streak-n').textContent = streak;
+  $('daily-prog-lab').textContent = 'Heute ' + count + '/' + goal + ' Hände' + (met ? ' ✓' : '');
+  $('daily-prog-pct').textContent = pct + '%';
+  $('daily-prog-fill').style.width = pct + '%';
+  $('daily-prog').classList.toggle('met', met);
+  $('goal-val').textContent = goal;
+  // GitHub-style calendar: last 13 weeks, columns = weeks (Mon→Sun rows)
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(today.getTime() - (13 * 7 - 1) * DAY_MS);
+  start.setTime(start.getTime() - ((start.getDay() + 6) % 7) * DAY_MS);   // back up to Monday
+  let html = '';
+  for (let cur = new Date(start); cur <= today; cur = new Date(cur.getTime() + DAY_MS)) {
+    const k = dayKey(cur), c = d.days[k] || 0;
+    html += '<div class="cd" style="background:' + calColor(c, goal) + '" title="' + k + ' · ' + c + ' Hände' + (c >= goal ? ' ✓' : '') + '"></div>';
+  }
+  $('daily-cal').innerHTML = html;
+}
+function changeDailyGoal(delta) {
+  const d = dailyData();
+  d.goal = Math.max(10, Math.min(300, (d.goal || 50) + delta));
+  save(); renderDailyHud(); renderDailyCard();
+}
+
 function onAction(actionId) {
   if (answered || !spot) return;
   answered = true;
@@ -1812,6 +1987,7 @@ function onAction(actionId) {
     ms.streak = 0;
   }
   stats.grind.counters.answers++;
+  recordDailyHand();   // daily-training tally + streak (every mode counts)
   // per-hand accuracy for the dashboard heatmap (skip modes not keyed on a starting hand)
   if (activeModeId !== 'combos' && activeModeId !== 'sizing') {
     const hn = heroNotation(spot);
@@ -4293,7 +4469,13 @@ const BADGES = [
   { id: 'gold3',     icon: '🎓', name: 'Level 3 Scholar', blurb: 'Unlocked difficulty 3 in a tiered drill',
     test: () => Object.values(stats.grind.tierLevel || {}).some(v => v >= 3) },
   { id: 'mastered5', icon: '🗂️', name: 'Spaced Out',     blurb: '5 review spots mastered',
-    test: () => (stats.grind.counters.mastered || 0) >= 5 }
+    test: () => (stats.grind.counters.mastered || 0) >= 5 },
+  { id: 'daily7',    icon: '🗓️', name: 'Week Warrior',   blurb: '7-day training streak (daily goal met)',
+    test: () => computeStreak() >= 7 },
+  { id: 'daily30',   icon: '📅', name: 'Monthly Master',  blurb: '30-day training streak (daily goal met)',
+    test: () => computeStreak() >= 30 },
+  { id: 'daily100',  icon: '🏆', name: 'Century Streak',  blurb: '100-day training streak (daily goal met)',
+    test: () => computeStreak() >= 100 }
 ];
 const toastQueue = [];
 let toastShowing = false;
@@ -4765,6 +4947,8 @@ function renderProgress() {
 
   $('dash-sub').textContent = (g.counters.answers || 0) + ' hands · ' + PROFILES[activeProfile()].short + ' profile';
 
+  renderDailyCard();
+
   // KPI strip
   const kpi = (lab, val, sub, accent) => '<div class="dash-kpi' + (accent ? ' accent' : '') +
     '"><div class="k-lab">' + lab + '</div><div class="k-val">' + val + '</div><div class="k-sub">' + (sub || '&nbsp;') + '</div></div>';
@@ -4878,6 +5062,9 @@ function renderProgress() {
 function openProgress() { renderProgress(); $('progress').classList.add('show'); $('backup-msg').textContent = ''; }
 function closeProgress() { $('progress').classList.remove('show'); }
 $('btn-progress').addEventListener('click', openProgress);
+$('daily-hud').addEventListener('click', openProgress);
+$('goal-minus').addEventListener('click', () => changeDailyGoal(-5));
+$('goal-plus').addEventListener('click', () => changeDailyGoal(5));
 
 /* ================================================================
    In-app updates (service worker lifecycle)
