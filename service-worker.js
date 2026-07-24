@@ -2,7 +2,7 @@
 // update (old caches are dropped on activate). Keep in sync with APP_VERSION
 // in index.html — the in-app Updates panel relies on this file's bytes
 // changing to trigger the browser's service-worker update check.
-const CACHE_NAME = 'preflop-trainer-v23';
+const CACHE_NAME = 'preflop-trainer-v24';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {

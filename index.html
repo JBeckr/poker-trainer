@@ -369,6 +369,17 @@
   .backup-msg { font-size: 0.78rem; margin-top: 8px; min-height: 1.2em; }
   .backup-msg.ok { color: var(--green); }
   .backup-msg.err { color: var(--red); }
+  .sync-status { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); margin-bottom: 10px; }
+  .sync-status.on { color: var(--green); }
+  .sync-status.err { color: var(--red); }
+  .sync-input {
+    width: 100%; background: #0a0e14; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font-family: var(--mono); font-size: 0.72rem; padding: 8px 10px; margin-bottom: 8px;
+    resize: vertical;
+  }
+  .sync-input:focus { outline: none; border-color: var(--green-dark); }
+  .sync-code-row { display: flex; gap: 8px; align-items: stretch; }
+  .sync-code-row .sync-input { margin-bottom: 0; }
 
   /* ---------- Dashboard (Solver) ---------- */
   .dash-panel { max-width: 800px; }
@@ -1133,6 +1144,30 @@
     </div>
 
     <div class="dash-card" style="margin-top:12px">
+      <div class="dash-h">Cloud-Sync <span class="dash-hsub">Geräte automatisch abgleichen</span></div>
+      <div class="sync-status" id="sync-status">Nicht eingerichtet</div>
+      <div id="sync-setup">
+        <div class="backup-hint" style="margin-bottom:8px">Gleicht Desktop &amp; Handy automatisch ab. Einmalig ein kostenloses Firebase-Projekt anlegen, die Konfiguration hier auf <b>beiden</b> Geräten einfügen und denselben Sync-Code nutzen. <a href="https://console.firebase.google.com" target="_blank" rel="noopener" style="color:var(--blue)">Firebase Console ↗</a></div>
+        <textarea id="sync-config" class="sync-input" rows="4" placeholder="firebaseConfig hier einfügen — das { apiKey: … , databaseURL: … } aus deinem Firebase-Web-App-Setup"></textarea>
+        <div class="sync-code-row">
+          <input id="sync-code" class="sync-input" style="flex:1" placeholder="Sync-Code (auf beiden Geräten gleich)">
+          <button class="backup-btn" id="sync-gen" title="Zufälligen Code erzeugen">🎲 Code</button>
+        </div>
+        <div class="backup-row" style="margin-top:8px">
+          <button class="backup-btn" id="sync-enable">☁️ Sync aktivieren</button>
+        </div>
+      </div>
+      <div id="sync-active" style="display:none">
+        <div class="backup-hint">Sync-Code: <b id="sync-code-shown" style="font-family:var(--mono);color:var(--text)"></b> — denselben Code auf dem anderen Gerät eingeben.</div>
+        <div class="backup-row" style="margin-top:8px">
+          <button class="backup-btn" id="sync-now">🔄 Jetzt abgleichen</button>
+          <button class="backup-btn" id="sync-disable">Deaktivieren</button>
+        </div>
+      </div>
+      <div class="backup-msg" id="sync-msg"></div>
+    </div>
+
+    <div class="dash-card" style="margin-top:12px">
       <div class="dash-h">Backup</div>
       <div class="backup-row" style="margin-top:8px">
         <button class="backup-btn" id="btn-export">⬇ Export</button>
@@ -1373,7 +1408,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.10.3';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.11.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1417,6 +1452,7 @@ function loadStats() {
   return s;
 }
 let stats = loadStats();
+let applyingRemote = false;   // set while ingesting a remote sync snapshot, to avoid a push echo
 function save(opts) {
   const resetBackup = !!(opts && opts.resetBackup);
   const w = statsWeight(stats);
@@ -1432,6 +1468,7 @@ function save(opts) {
     const bk = readStore(BACKUP_KEY);
     if (resetBackup || !bk || w >= statsWeight(bk)) localStorage.setItem(BACKUP_KEY, json);
   } catch(e) {}
+  if (typeof schedulePush === 'function' && !applyingRemote) schedulePush();
 }
 // Ask the browser not to evict our data (biggest cause of "my PWA lost my stats")
 if (navigator.storage && navigator.storage.persist) {
@@ -5211,6 +5248,164 @@ $('import-file').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
+/* ================================================================
+   Cloud sync (optional) — Firebase Realtime Database
+   Off by default and self-contained: the user pastes their own Firebase
+   web-config + a shared sync code (stored device-locally, never inside the
+   synced stats). Both devices read/write sync/<code>; incoming snapshots are
+   MERGED (max counters, union sets) so no device ever loses progress. */
+const SYNC_CFG_KEY = 'preflop-sync-config';
+const FB_VER = '10.12.2';
+let syncState = { ready: false, ref: null, dbMod: null, lastSig: null };
+let pushTimer = null;
+
+function loadSyncCfg() { try { return JSON.parse(localStorage.getItem(SYNC_CFG_KEY)) || null; } catch(e) { return null; } }
+function saveSyncCfg(c) { try { localStorage.setItem(SYNC_CFG_KEY, JSON.stringify(c)); } catch(e) {} }
+function setSyncStatus(txt, cls) { const el = $('sync-status'); if (el) { el.textContent = txt; el.className = 'sync-status' + (cls ? ' ' + cls : ''); } }
+function syncMsg(txt, ok) { const el = $('sync-msg'); if (el) { el.textContent = txt; el.className = 'backup-msg ' + (ok ? 'ok' : 'err'); } }
+
+// order-independent JSON so "did the merge actually change anything?" is stable
+// (a merge only ever reorders keys when nothing new arrived — that must read as
+// unchanged, or two devices ping-pong writes forever)
+function canonJSON(o) {
+  return JSON.stringify(o, (k, v) =>
+    (v && typeof v === 'object' && !Array.isArray(v))
+      ? Object.keys(v).sort().reduce((a, key) => { a[key] = v[key]; return a; }, {})
+      : v);
+}
+function mergeStats(a, b) {
+  if (!a) return b; if (!b) return a;
+  const out = JSON.parse(JSON.stringify(a));
+  const maxTC = (x, y) => ({ t: Math.max((x&&x.t)||0, (y&&y.t)||0), c: Math.max((x&&x.c)||0, (y&&y.c)||0) });
+  out.modes = out.modes || {};
+  for (const [id, mb] of Object.entries(b.modes || {})) {
+    const ma = out.modes[id];
+    if (!ma) { out.modes[id] = JSON.parse(JSON.stringify(mb)); continue; }
+    ma.total = Math.max(ma.total||0, mb.total||0);
+    ma.correct = Math.max(ma.correct||0, mb.correct||0);
+    ma.best = Math.max(ma.best||0, mb.best||0);
+    ma.streak = Math.max(ma.streak||0, mb.streak||0);
+    ma.buckets = ma.buckets || {};
+    for (const [bk, bv] of Object.entries(mb.buckets || {})) ma.buckets[bk] = maxTC(ma.buckets[bk], bv);
+  }
+  const ga = out.grind = out.grind || {}, gb = b.grind || {};
+  ga.counters = ga.counters || {};
+  ga.counters.answers = Math.max(ga.counters.answers||0, (gb.counters||{}).answers||0);
+  ga.counters.mastered = Math.max(ga.counters.mastered||0, (gb.counters||{}).mastered||0);
+  ga.badges = [...new Set([...(ga.badges||[]), ...(gb.badges||[])])];
+  ga.daily = ga.daily || { goal: 50, days: {} };
+  ga.daily.days = ga.daily.days || {};
+  for (const [k, v] of Object.entries((gb.daily||{}).days || {})) ga.daily.days[k] = Math.max(ga.daily.days[k]||0, v||0);
+  const mergeHS = (A, B) => { A = A || {}; for (const [h, v] of Object.entries(B || {})) A[h] = maxTC(A[h], v); return A; };
+  ga.handStats = mergeHS(ga.handStats, gb.handStats);
+  ga.handStatsM = ga.handStatsM || {};
+  for (const [mid, mm] of Object.entries(gb.handStatsM || {})) ga.handStatsM[mid] = mergeHS(ga.handStatsM[mid], mm);
+  ga.tagStats = ga.tagStats || {};
+  for (const [k, v] of Object.entries(gb.tagStats || {})) { const x = ga.tagStats[k]; ga.tagStats[k] = { t: Math.max((x&&x.t)||0, v.t||0), m: Math.max((x&&x.m)||0, v.m||0) }; }
+  ga.dirStats = ga.dirStats || {};
+  for (const [k, v] of Object.entries(gb.dirStats || {})) ga.dirStats[k] = Math.max(ga.dirStats[k]||0, v||0);
+  ga.tierLevel = ga.tierLevel || {};
+  for (const [k, v] of Object.entries(gb.tierLevel || {})) ga.tierLevel[k] = Math.max(ga.tierLevel[k]||0, v||0);
+  ga.missQueue = ga.missQueue || [];
+  const seen = new Set(ga.missQueue.map(q => q.id));
+  for (const q of (gb.missQueue || [])) if (!seen.has(q.id)) { ga.missQueue.push(q); seen.add(q.id); }
+  return out;
+}
+
+function reRenderAll() {
+  renderStats(); renderBuckets();
+  if (typeof renderTiers === 'function') renderTiers();
+  renderLeaks(); renderTrophies();
+  if ($('progress') && $('progress').classList.contains('show')) renderProgress();
+}
+
+function parseFirebaseConfig(raw) {
+  let s = (raw || '').trim();
+  const i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if (i < 0 || j < 0) throw new Error('kein { … } gefunden');
+  s = s.slice(i, j + 1);
+  let obj;
+  try { obj = JSON.parse(s); } catch(e) { obj = (new Function('return (' + s + ')'))(); }
+  if (!obj || typeof obj !== 'object') throw new Error('kein Objekt');
+  return obj;
+}
+
+async function initSync() {
+  renderSyncUI();
+  const c = loadSyncCfg();
+  if (!c || !c.enabled || !c.config || !c.code) return;
+  setSyncStatus('Verbinde …');
+  try {
+    const appMod = await import('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-app.js');
+    const dbMod  = await import('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-database.js');
+    const app = appMod.initializeApp(c.config);
+    const db  = dbMod.getDatabase(app);
+    const r   = dbMod.ref(db, 'sync/' + c.code);
+    syncState.dbMod = dbMod; syncState.ref = r; syncState.ready = true;
+    dbMod.onValue(r,
+      snap => { const remote = snap.val(); if (!remote || !remote.stats) { pushSync(true); } else { applyRemote(remote.stats); } },
+      err => setSyncStatus('✗ ' + err.message, 'err'));
+    setSyncStatus('✓ Verbunden', 'on');
+  } catch (e) {
+    setSyncStatus('✗ Verbindung fehlgeschlagen', 'err');
+    syncMsg('Firebase-Fehler: ' + e.message, false);
+  }
+}
+
+function applyRemote(remoteStats) {
+  const merged = mergeStats(stats, remoteStats);
+  const changed = canonJSON(merged) !== canonJSON(stats);
+  const remoteW = statsWeight(remoteStats);
+  applyingRemote = true;
+  try { if (changed) { stats = merged; save(); reRenderAll(); } } finally { applyingRemote = false; }
+  setSyncStatus('✓ Synchronisiert · ' + new Date().toLocaleTimeString(), 'on');
+  if (statsWeight(stats) > remoteW) pushSync();     // our copy was ahead → push the merge back
+}
+
+function schedulePush() {
+  if (!syncState.ready) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => pushSync(), 1500);
+}
+async function pushSync(force) {
+  if (!syncState.ready || !syncState.ref) return;
+  const sig = canonJSON(stats);
+  if (!force && sig === syncState.lastSig) return;
+  syncState.lastSig = sig;
+  try {
+    await syncState.dbMod.set(syncState.ref, { stats: JSON.parse(JSON.stringify(stats)), savedAt: Date.now(), weight: statsWeight(stats) });
+    setSyncStatus('✓ Synchronisiert · ' + new Date().toLocaleTimeString(), 'on');
+  } catch (e) { setSyncStatus('✗ Push-Fehler', 'err'); syncMsg(e.message, false); }
+}
+
+function renderSyncUI() {
+  const c = loadSyncCfg();
+  const active = !!(c && c.enabled);
+  if ($('sync-setup')) $('sync-setup').style.display = active ? 'none' : 'block';
+  if ($('sync-active')) $('sync-active').style.display = active ? 'block' : 'none';
+  if (active && $('sync-code-shown')) $('sync-code-shown').textContent = c.code;
+  if (!active && !syncState.ready) setSyncStatus('Nicht eingerichtet');
+}
+if ($('sync-gen')) $('sync-gen').addEventListener('click', () => {
+  $('sync-code').value = (Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6)).toUpperCase();
+});
+if ($('sync-enable')) $('sync-enable').addEventListener('click', () => {
+  const raw = $('sync-config').value, code = $('sync-code').value.trim();
+  if (!raw.trim()) { syncMsg('Bitte die firebaseConfig einfügen.', false); return; }
+  if (!code) { syncMsg('Bitte einen Sync-Code angeben (auf beiden Geräten gleich).', false); return; }
+  let cfg; try { cfg = parseFirebaseConfig(raw); } catch(e) { syncMsg('Konfiguration nicht lesbar: ' + e.message, false); return; }
+  if (!cfg.databaseURL) { syncMsg('Der Konfiguration fehlt die databaseURL — ist die Realtime Database angelegt?', false); return; }
+  saveSyncCfg({ enabled: true, config: cfg, code });
+  syncMsg('Aktiviert — verbinde …', true);
+  renderSyncUI(); initSync();
+});
+if ($('sync-now')) $('sync-now').addEventListener('click', () => { if (syncState.ready) { pushSync(true); syncMsg('Abgleich angestoßen.', true); } else { syncMsg('Noch nicht verbunden.', false); } });
+if ($('sync-disable')) $('sync-disable').addEventListener('click', () => {
+  const c = loadSyncCfg() || {}; c.enabled = false; saveSyncCfg(c);
+  syncState.ready = false; syncState.ref = null;
+  renderSyncUI(); setSyncStatus('Deaktiviert'); syncMsg('Sync deaktiviert (Zugangsdaten bleiben gespeichert).', true);
+});
+
 /* ---------------- boot ---------------- */
 // fast resume: reopen on the mode the user left last time (sporadic-use friendly)
 if (stats.lastMode && MODES[stats.lastMode]) activeModeId = stats.lastMode;
@@ -5224,6 +5419,7 @@ renderLeaks();
 renderTrophies();
 renderUpdateUI();
 nextSpot();
+initSync();   // connect cloud sync if the user has configured it on this device
 </script>
 </body>
 </html>
