@@ -712,6 +712,21 @@
     margin-bottom: 8px;
     text-align: center;
   }
+  /* the played hand's notation, badged above the grid so you can name and place
+     the cell that carries the white frame */
+  .matrix-panel .mp-hero {
+    display: inline-block;
+    background: var(--gold);
+    color: #10161f;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: none;
+    padding: 1px 7px;
+    border-radius: 6px;
+    margin-right: 7px;
+    font-size: 0.82rem;
+    vertical-align: middle;
+  }
   .matrix {
     display: grid;
     grid-template-columns: repeat(13, 24px);
@@ -1280,7 +1295,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.8.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.9.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1539,7 +1554,7 @@ function renderMatrixPanel(m) {
   if (!m) { panel.classList.remove('show'); return; }
   panel.classList.add('show');
   paintMatrix($('matrix'), m);
-  $('matrix-title').textContent = m.title || '';
+  $('matrix-title').innerHTML = (m.hero ? '<span class="mp-hero">' + m.hero + '</span>' : '') + (m.title || '');
   paintLegend($('matrix-legend'), m);
 }
 function cssVarOf(cls) {
@@ -1554,6 +1569,14 @@ function cssVarOf(cls) {
     'in-skip': 'repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px)'
   };
   return map[cls] || '#182234';
+}
+
+/* Locator grid for the postflop modes (Flop Defense, Turn Barrel, River, Value
+   Bet): colour the preflop range the hero's hand came from and frame the played
+   starting hand, so after any decision you can see where the hand sits in the
+   13x13 grid. Reuses the same matrix shape the chart modes render. */
+function preflopLocatorMatrix(heroCards, pool, css, label, title) {
+  return { layers: [{ set: pool, css, label }], hero: handNotation(heroCards), title };
 }
 
 /* ----- verdict + extra ----- */
@@ -2681,7 +2704,18 @@ MODES.combos = {
               blockers.map(c => c[0] + SUIT_GLYPH[c[1]]).join(' ') + '</b>.' : 'No relevant dead cards this time.'),
       extra: { title: 'Combo autopsy', html: comboGridHTML(s.combos) +
                '<div class="combo-ledger">' + s.base + ' base − ' + s.blocked + ' blocked = <b>' + s.live + ' live</b></div>' },
-      matrix: null,
+      matrix: (() => {
+        const tgt = new Set();
+        if (s.variant === 'sets') {
+          for (const rk of new Set(s.board.map(c => c.rank))) tgt.add(rk + rk);
+        } else {
+          const a = s.target[0], b = s.target[1];
+          if (a === b) tgt.add(a + b);
+          else { const hi = RI[a] <= RI[b] ? a : b, lo = hi === a ? b : a; tgt.add(hi + lo + 's'); tgt.add(hi + lo + 'o'); }
+        }
+        return { layers: [{ set: tgt, css: 'in-raise', label: s.targetLabel }],
+                 title: 'Counted hand' + (tgt.size > 1 ? 's' : '') + ': ' + s.targetLabel };
+      })(),
       bucket: 'counter',
       tags: { handClass: null, direction: null }
     };
@@ -3022,6 +3056,7 @@ const BB_DEF_POOL = (() => {
   const e = VS_OPEN_DATA.gm.BB_vs_BTN;
   return [...new Set([...e.call, ...e.dual, ...e.callMixed])];
 })();
+const BB_DEF_SET = new Set(BB_DEF_POOL);   // as a Set for the flop-defense locator grid
 const suitColor = { s: '#c9d2e0', h: '#ff8a84', d: '#7fb0ff', c: '#6fd89a' };
 const cardSpan = c => '<span style="color:' + suitColor[c.suit] + '">' + c.rank + SUIT_GLYPH[c.suit] + '</span>';
 
@@ -3098,7 +3133,8 @@ MODES.flopdef = {
         '<div><b>' + s.cls.madeLabel + '</b></div>' +
         '<div style="color:var(--muted);font-size:0.8rem">' + drawTxt + '</div>' +
         (outsWhenBehind != null ? '<div style="color:var(--muted);font-size:0.8rem;margin-top:4px">~' + outsWhenBehind + ' outs when behind' + (outsWhenBehind === 2 ? ' — the dreaded underpair' : '') + '</div>' : '') },
-      matrix: null,
+      matrix: preflopLocatorMatrix(s.heroCards, BB_DEF_SET, 'in-call', 'BB defend',
+                'BB defence vs ' + s.opener + ' open — where your hand sits'),
       bucket: flopDefFamily(s.cls),
       tags: { handClass: flopDefFamily(s.cls),
               direction: correct ? null : (order[action] < order[rec] ? 'passive' : 'aggressive') }
@@ -3242,7 +3278,8 @@ MODES.barrel = {
         '<div style="color:var(--muted);font-size:0.8rem">' +
           (s.cls.drawTier === 'none' ? 'no draw' : s.cls.outs + ' outs ≈ ' + (s.cls.outs * 2) + '% to hit') + '</div>' +
         '<div style="color:var(--muted);font-size:0.8rem;margin-top:6px">Board ' + s.board.map(cardSpan).join(' ') + '</div>' },
-      matrix: null,
+      matrix: preflopLocatorMatrix(s.heroCards, RANGES[s.opener], 'in-raise', s.opener + ' open',
+                s.opener + ' opening range — where your hand sits'),
       bucket: fam,
       tags: { handClass: fam, direction: correct ? null : (action === 'barrel' ? 'aggressive' : 'passive') }
     };
@@ -3366,7 +3403,8 @@ MODES.river = {
         '<div style="color:var(--muted);font-size:0.8rem">' +
           (s.cls.drawTier === 'none' ? 'no draw' : 'missed ' + (s.cls.flush === 'fd' ? 'flush draw' : s.cls.straight === 'oesd' ? 'open-ender' : 'gutshot')) + '</div>' +
         '<div style="color:var(--muted);font-size:0.8rem;margin-top:6px">Board ' + s.board.map(cardSpan).join(' ') + '</div>' },
-      matrix: null,
+      matrix: preflopLocatorMatrix(s.heroCards, RANGES[s.opener], 'in-raise', s.opener + ' open',
+                s.opener + ' opening range — where your hand sits'),
       bucket: fam,
       tags: { handClass: fam,
               direction: correct ? null :
@@ -3811,7 +3849,8 @@ MODES.valuebet = {
         '<div style="font-size:1.15rem;margin-bottom:6px">' + s.heroCards.map(cardSpan).join(' &nbsp; ') + '</div>' +
         '<div><b>' + s.cls.madeLabel + '</b></div>' +
         (s.dec.streets >= 1 ? '<div id="vb-sizing-widget"></div>' : '') },
-      matrix: null,
+      matrix: preflopLocatorMatrix(s.heroCards, RANGES[s.opener], 'in-raise', s.opener + ' open',
+                s.opener + ' opening range — where your hand sits'),
       bucket: fam,
       tags: { handClass: fam, direction: correct ? null : (chosen < s.dec.streets ? 'passive' : 'aggressive') }
     };
