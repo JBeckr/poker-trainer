@@ -96,6 +96,18 @@
   }
   .tab-row .tg-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
   .tab-row.pills-row { justify-content: flex-end; }
+  /* collapsible Preflop / Postflop group headers */
+  .tg-head {
+    display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+    background: none; border: none; cursor: pointer; padding: 2px 2px 2px 0;
+    font-family: inherit; font-size: 0.62rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+  }
+  .tg-head:hover { color: var(--text); }
+  .tg-head .tg-label { flex: 0 0 auto; }
+  .tg-caret { display: inline-block; width: 10px; font-size: 0.6rem; }
+  .tg-active { text-transform: none; letter-spacing: 0; color: var(--gold); font-weight: 800; margin-left: 4px; }
+  .tab-group.collapsed .tg-tabs { display: none; }
   .tab {
     background: var(--panel);
     border: 1px solid #1e2a3c;
@@ -248,6 +260,38 @@
   .speed-bar .sb-pill:hover { color: var(--text); }
   .speed-bar .sb-pill.active { color: var(--gold); border-color: var(--gold-dark); background: #0e2419; }
   .speed-bar .sb-hint { color: var(--muted); font-size: 0.68rem; }
+  /* compact one-line settings bar (Fokus · Auto-Weiter · Spot-Filter) */
+  .settings-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    width: 100%; max-width: 860px; margin: 0 auto 10px;
+    font-family: var(--mono);
+  }
+  .sbar-toggle {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    padding: 5px 11px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    font-size: 0.7rem; font-weight: 700;
+  }
+  .sbar-toggle:hover { border-color: var(--gold-dark); color: var(--text); }
+  .sbar-toggle.on { color: var(--green); border-color: var(--green-dark); background: #12351f; }
+  .sbar-seg {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+  }
+  .sbar-ico { font-size: 0.82rem; line-height: 1; }
+  .sbar-seg .sb-pills { display: flex; gap: 3px; }
+  .sbar-seg .sb-pill {
+    padding: 3px 8px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    font-family: var(--mono); font-size: 0.68rem; font-weight: 700;
+  }
+  .sbar-seg .sb-pill:hover { color: var(--text); }
+  .sbar-seg .sb-pill.active { color: var(--gold); border-color: var(--gold-dark); background: #0e2419; }
+  .sbar-select {
+    background: transparent; border: none; color: var(--text);
+    font-family: var(--mono); font-size: 0.7rem; padding: 2px; max-width: 200px; cursor: pointer;
+  }
+  .sbar-select:focus { outline: none; }
   .dark-select {
     background: #182234;
     border: 1px solid var(--line-2);
@@ -1052,11 +1096,6 @@
 
 <div class="tabbar" id="tabbar"></div>
 
-<div class="mode-info" id="mode-info">
-  <button class="mi-toggle" id="mi-toggle">ℹ️ Was trainiert das? <span id="mi-mode-title"></span></button>
-  <div class="mi-body" id="mi-body"></div>
-</div>
-
 <div class="viewer-overlay" id="viewer">
   <div class="viewer-panel">
     <div class="viewer-head">
@@ -1204,22 +1243,16 @@
   </div>
 </div>
 
-<div class="focus-bar" id="focus-bar">
-  <span class="fb-label">🎯 Trainingsfokus</span>
-  <button class="fb-toggle" id="fb-toggle"></button>
-  <span class="fb-hint">zeigt vermehrt Grenzhände statt klarer Folds &amp; Premiums</span>
-</div>
-
-<div class="speed-bar" id="speed-bar">
-  <span class="sb-label">⏱️ Auto-Weiter</span>
-  <div class="sb-pills" id="sb-pills"></div>
-  <span class="sb-hint">bei richtiger Antwort · Leertaste springt sofort</span>
-</div>
-
-<div class="speed-bar" id="filter-bar" style="display:none">
-  <span class="sb-label">🎯 Spot-Filter</span>
-  <select id="filter-select" class="dark-select"></select>
-  <span class="sb-hint" id="filter-hint">gezielt einen Spot drillen · Reviews pausieren solange</span>
+<div class="settings-bar" id="settings-bar">
+  <button class="sbar-toggle" id="fb-toggle" title="Trainingsfokus — zeigt vermehrt Grenzhände statt klarer Folds & Premiums"></button>
+  <div class="sbar-seg" title="Auto-Weiter bei richtiger Antwort · Leertaste springt sofort">
+    <span class="sbar-ico">⏱️</span>
+    <div class="sb-pills" id="sb-pills"></div>
+  </div>
+  <label class="sbar-seg" id="filter-seg" title="Spot-Filter — gezielt einen Spot drillen (Reviews pausieren solange)">
+    <span class="sbar-ico">🔎</span>
+    <select id="filter-select" class="sbar-select"></select>
+  </label>
 </div>
 
 <div class="table-wrap">
@@ -1408,7 +1441,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.11.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.12.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1744,16 +1777,36 @@ function renderBuckets() {
 }
 
 /* ----- tabs ----- */
+function activeGroupLabel() {
+  for (const g of MODE_GROUPS) if (g.modes.includes(activeModeId)) return g.label;
+  return MODE_GROUPS[0].label;
+}
+function isGroupOpen(label) {
+  const gc = stats.groupCollapsed;
+  if (gc && label in gc) return !gc[label];
+  return label === activeGroupLabel();      // default: only the active mode's group is expanded
+}
+function toggleGroup(label) {
+  stats.groupCollapsed = stats.groupCollapsed || {};
+  stats.groupCollapsed[label] = isGroupOpen(label);   // open → collapse, collapsed → open
+  save();
+  renderTabs();
+}
 function renderTabs() {
   const bar = $('tabbar');
   bar.innerHTML = '';
   for (const group of MODE_GROUPS) {
+    const open = isGroupOpen(group.label);
+    const activeHere = group.modes.includes(activeModeId);
     const row = document.createElement('div');
-    row.className = 'tab-row';
-    const label = document.createElement('span');
-    label.className = 'tg-label';
-    label.textContent = group.label;
-    row.appendChild(label);
+    row.className = 'tab-row tab-group' + (open ? '' : ' collapsed');
+    const head = document.createElement('button');
+    head.className = 'tg-head';
+    head.innerHTML = '<span class="tg-caret">' + (open ? '▾' : '▸') + '</span>' +
+      '<span class="tg-label">' + group.label + '</span>' +
+      (!open && activeHere ? '<span class="tg-active">' + MODES[activeModeId].label + '</span>' : '');
+    head.addEventListener('click', () => toggleGroup(group.label));
+    row.appendChild(head);
     const tabs = document.createElement('div');
     tabs.className = 'tg-tabs';
     for (const id of group.modes) {
@@ -1788,7 +1841,6 @@ function renderTabs() {
   pillsRow.appendChild(pills);
   bar.appendChild(pillsRow);
   renderTiers();
-  renderModeInfo();
 }
 function renderTiers() { /* filled by Grind Loop stage */
   document.querySelectorAll('.tab .tier').forEach(el => {
@@ -1841,23 +1893,13 @@ function setMode(id) {
   nextSpot();
 }
 
-function renderModeInfo() {
-  const info = MODE_INFO[activeModeId];
-  if (!info) { $('mode-info').style.display = 'none'; return; }
-  $('mode-info').style.display = '';
-  $('mi-mode-title').textContent = '— ' + info.title;
-  $('mi-body').innerHTML = info.text;
-  // stays collapsed on mode switch; only the content updates
-  $('mi-body').classList.remove('show');
-}
 
 function renderFocusBar() {
-  const bar = $('focus-bar');
-  bar.classList.toggle('show', FOCUS_MODES.has(activeModeId));   // all range-chart modes
   const t = $('fb-toggle');
+  t.style.display = FOCUS_MODES.has(activeModeId) ? '' : 'none';   // only range-chart modes
   const on = focusOn();
   t.classList.toggle('on', on);
-  t.textContent = on ? 'Grenzhände: AN' : 'alle Hände';
+  t.textContent = on ? '🎯 Grenzhände' : '🎯 alle Hände';
 }
 
 const AUTO_ADVANCE_OPTIONS = [1, 2, 3, 5];   // seconds
@@ -2807,148 +2849,6 @@ function weighBreakdown(set) {
   return { p, su, o, count: p * 6 + su * 4 + o * 12 };
 }
 
-MODES.combos = {
-  label: 'Combos', chapter: 'Ch 9',
-  bucketTitle: 'Accuracy by question type',
-  bucketList: () => [{ key: 'counter', label: 'Combo counting' }, { key: 'weighin', label: 'Range weigh-in' }],
-  buttons: (s) => s.options.map((v, i) => ({
-    id: String(v), label: String(v), key: String(i + 1), css: 'btn-chip'
-  })),
-  deal(params) {
-    const qType = (params && params.qType) || (Math.random() < 0.55 ? 'counter' : 'weighin');
-    if (qType === 'weighin') {
-      let tokens = params && params.tokens;
-      if (!tokens) {
-        tokens = [];
-        if (Math.random() < 0.7) tokens.push(pick(WEIGH_POOLS.pair));
-        if (Math.random() < 0.6) tokens.push(pick(WEIGH_POOLS.suited));
-        if (Math.random() < 0.5) tokens.push(pick(WEIGH_POOLS.off));
-        if (!tokens.length) tokens.push(pick(WEIGH_POOLS.pair));
-      }
-      const set = expand(tokens);
-      const bd = weighBreakdown(set);
-      const qKind = (params && params.qKind) || (Math.random() < 0.3 ? 'pct' : 'count');
-      let options, answer;
-      // classic miscounts as distractors
-      const dPair4 = bd.count - 2 * bd.p;                       // pairs counted as 4
-      const dSwap  = bd.count + 8 * bd.su - 8 * bd.o;           // suited/offsuit weights swapped
-      const dOff   = bd.count + pick([4, -4, 6, -6, 12, -12]);
-      if (qKind === 'count') {
-        options = uniqueOptions(bd.count, [dPair4, dSwap, dOff]);
-        answer = String(bd.count);
-      } else {
-        const pcts = new Set([(bd.count / 1326 * 100).toFixed(1)]);
-        for (const d of [dPair4, dSwap, dOff, bd.count + 10]) {
-          if (pcts.size >= 4) break;
-          const v = (Math.max(0, d) / 1326 * 100).toFixed(1);
-          pcts.add(v);
-        }
-        let bump = bd.count + 14;
-        while (pcts.size < 4) { pcts.add((bump / 1326 * 100).toFixed(1)); bump += 8; }
-        options = [...pcts].sort((a, b) => parseFloat(a) - parseFloat(b)).map(v => v + '%');
-        answer = (bd.count / 1326 * 100).toFixed(1) + '%';
-      }
-      return { qType, qKind, tokens, set, bd, options: (params && params.options) || options, answer,
-        table: { heroPos: 'BTN', prompt: '"' + tokens.join(', ') + '" — ' +
-                 (qKind === 'count' ? 'how many combos is that?' : 'what % of all 1326 hands is that?'),
-                 seats: Object.fromEntries(ALL_POS.filter(p => p !== 'BTN').map(p => [p, { folded: true }])) } };
-    }
-    // counter
-    const heroCards = params && params.heroCards ? params.heroCards.map(strToCard) : dealHand();
-    const nBoard = params && params.board ? params.board.length : pick([0, 3, 3, 4, 5]);
-    const board = params && params.board ? params.board.map(strToCard) : dealCards(nBoard, heroCards);
-    const dead = [...heroCards, ...board].map(cardStr);
-    let variant = (params && params.variant) || (board.length && Math.random() < 0.4 ? 'sets' : 'token');
-    let target = params && params.target;
-    let combos, question, targetLabel;
-    if (variant === 'sets' && board.length) {
-      const boardRanks = [...new Set(board.map(c => c.rank))];
-      combos = boardRanks.flatMap(rk => comboEnum(rk + rk, dead));
-      question = 'How many SET combos (a pocket pair matching the board) can villain hold?';
-      targetLabel = 'sets';
-      target = null;
-    } else {
-      variant = 'token';
-      if (!target) {
-        const inPlay = [...new Set([...heroCards, ...board].map(c => c.rank))].sort((a, b) => RI[a] - RI[b]);
-        const cands = inPlay.map(rk => rk + rk);
-        for (let i = 0; i < inPlay.length; i++)
-          for (let j = i + 1; j < inPlay.length; j++) cands.push(inPlay[i] + inPlay[j]);
-        target = pick(cands);
-      }
-      combos = comboEnum(target, dead);
-      targetLabel = target[0] === target[1] ? 'pocket ' + target : target + ' (suited or not)';
-      question = 'How many combos of ' + targetLabel + ' can villain hold?';
-    }
-    const base = combos.length;
-    const live = combos.filter(c => !c.blocked).length;
-    const blocked = base - live;
-    const options = (params && params.options) ||
-      uniqueOptions(live, [base !== live ? base : live + 4, live - 2, live + Math.max(2, Math.ceil(blocked / 2))]);
-    return { qType, variant, target, targetLabel, combos, base, live, blocked,
-      heroCards, board, options, answer: String(live),
-      table: { heroPos: 'BTN', heroCards, board,
-        prompt: question,
-        seats: Object.fromEntries(ALL_POS.filter(p => p !== 'BTN').map(p =>
-          [p, { folded: p !== 'BB' }])) } };  // BB stays live as "villain"
-  },
-  descriptor: s => s.qType === 'weighin'
-    ? { qType: s.qType, qKind: s.qKind, tokens: s.tokens, options: s.options }
-    : { qType: s.qType, variant: s.variant, target: s.target,
-        heroCards: s.heroCards.map(cardStr), board: s.board.map(cardStr), options: s.options },
-  grade(s, action) {
-    const correct = action === s.answer;
-    if (s.qType === 'weighin') {
-      const b = s.bd;
-      const parts = [];
-      if (b.p)  parts.push(b.p + ' pair' + (b.p > 1 ? 's' : '') + ' × 6 = ' + b.p * 6);
-      if (b.su) parts.push(b.su + ' suited × 4 = ' + b.su * 4);
-      if (b.o)  parts.push(b.o + ' offsuit × 12 = ' + b.o * 12);
-      return {
-        correct, correctAction: s.answer,
-        title: correct ? '✓ Correct — ' + s.answer
-                       : '✗ Not quite — it\'s ' + s.answer,
-        html: parts.join(' &nbsp;+&nbsp; ') + ' &nbsp;→&nbsp; <b>' + b.count + ' combos</b> ' +
-              '(<span class="pct">' + (b.count / 1326 * 100).toFixed(1) + '%</span> of 1326). ' +
-              'Rule of thumb: pairs 6, suited 4, offsuit 12.',
-        matrix: { layers: [{ set: s.set, css: 'in', label: 'In range' }],
-                  hero: null, weights: true,
-                  title: '"' + s.tokens.join(', ') + '" — cell = combo weight',
-                  restLabel: 'Not in range' },
-        bucket: 'weighin',
-        tags: { handClass: null, direction: null }
-      };
-    }
-    const blockers = [...new Set([...s.heroCards, ...s.board]
-      .filter(c => s.variant === 'sets' ? s.board.some(b => b.rank === c.rank) : s.target.includes(c.rank))
-      .map(cardStr))];
-    return {
-      correct, correctAction: s.answer,
-      title: correct ? '✓ Correct — ' + s.answer + ' live combos'
-                     : '✗ Not quite — ' + s.answer + ' live combos',
-      html: '<b>' + s.base + '</b> base combos of ' + s.targetLabel + ' − <b>' + s.blocked +
-            '</b> blocked by dead cards = <b>' + s.live + '</b> live. ' +
-            (blockers.length ? 'Cards doing the blocking: <b>' +
-              blockers.map(c => c[0] + SUIT_GLYPH[c[1]]).join(' ') + '</b>.' : 'No relevant dead cards this time.'),
-      extra: { title: 'Combo autopsy', html: comboGridHTML(s.combos) +
-               '<div class="combo-ledger">' + s.base + ' base − ' + s.blocked + ' blocked = <b>' + s.live + ' live</b></div>' },
-      matrix: (() => {
-        const tgt = new Set();
-        if (s.variant === 'sets') {
-          for (const rk of new Set(s.board.map(c => c.rank))) tgt.add(rk + rk);
-        } else {
-          const a = s.target[0], b = s.target[1];
-          if (a === b) tgt.add(a + b);
-          else { const hi = RI[a] <= RI[b] ? a : b, lo = hi === a ? b : a; tgt.add(hi + lo + 's'); tgt.add(hi + lo + 'o'); }
-        }
-        return { layers: [{ set: tgt, css: 'in-raise', label: s.targetLabel }],
-                 title: 'Counted hand' + (tgt.size > 1 ? 's' : '') + ': ' + s.targetLabel };
-      })(),
-      bucket: 'counter',
-      tags: { handClass: null, direction: null }
-    };
-  }
-};
 
 /* ---------------- C-Bet Trainer (Ch 4) ----------------
    Heads-up single-raised pot, you are the preflop raiser IN POSITION (opened
@@ -4297,8 +4197,7 @@ const REVIEW_GAP = { 1: 5, 2: 12 };   // answers until due, per box
 const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 8', barrel: 'Ch 12', river: 'Ch 12 (ext.)', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
 const MODE_GROUPS = [
   { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef', 'stackdepth'] },
-  { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'river', 'valuebet', 'threebetpot'] },
-  { label: 'Combos',   modes: ['combos'] }
+  { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'river', 'valuebet', 'threebetpot'] }
 ];
 const MODE_INFO = {
   rfi:      { title: 'Open (RFI)', text: 'Kapitel 2 — welche Hände du von welcher Position aus eröffnest. Am engsten unter UTG, am weitesten am Button.' },
@@ -4340,9 +4239,9 @@ function activeSpotFilter() {
   return (k && SPOT_FILTERS[activeModeId]) ? k : null;
 }
 function renderFilterBar() {
-  const bar = $('filter-bar'), f = SPOT_FILTERS[activeModeId];
-  if (!f) { bar.style.display = 'none'; return; }
-  bar.style.display = '';
+  const seg = $('filter-seg'), f = SPOT_FILTERS[activeModeId];
+  if (!f) { seg.style.display = 'none'; return; }
+  seg.style.display = '';
   const sel = $('filter-select');
   sel.innerHTML = '<option value="">Alle Spots (zufällig)</option>' +
     f.options().map(o => '<option value="' + o.key + '">' + o.label + '</option>').join('');
@@ -4501,8 +4400,6 @@ const BADGES = [
     test: () => (stats.modes.vsopen || {}).correct >= 25 },
   { id: 'iso25',     icon: '🥊', name: 'Limp Puncher',   blurb: '25 correct answers in ISO',
     test: () => (stats.modes.iso || {}).correct >= 25 },
-  { id: 'combo15',   icon: '🧮', name: 'Combo Wizard',   blurb: '15 correct answers in Combos',
-    test: () => (stats.modes.combos || {}).correct >= 15 },
   { id: 'sizing15',  icon: '📏', name: 'Tape Measure',   blurb: '15 correct answers in Sizing',
     test: () => (stats.modes.sizing || {}).correct >= 15 },
   { id: 'cbet20',    icon: '🔫', name: 'Trigger Discipline', blurb: '20 correct answers in C-Bet',
@@ -4944,7 +4841,6 @@ $('fb-toggle').addEventListener('click', () => {
   if (!answered) nextSpot();   // reshuffle the current pending hand under the new setting
 });
 
-$('mi-toggle').addEventListener('click', () => $('mi-body').classList.toggle('show'));
 
 /* ================================================================
    Progress & analytics overlay
@@ -5415,6 +5311,13 @@ if ($('sync-disable')) $('sync-disable').addEventListener('click', () => {
 });
 
 /* ---------------- boot ---------------- */
+// Combos drill was removed — drop it from any resume/review state so it never surfaces
+{
+  const VISIBLE_MODES = new Set(MODE_GROUPS.flatMap(g => g.modes));
+  if (stats.grind && Array.isArray(stats.grind.missQueue))
+    stats.grind.missQueue = stats.grind.missQueue.filter(q => VISIBLE_MODES.has(q.mode));
+  if (stats.lastMode && !VISIBLE_MODES.has(stats.lastMode)) stats.lastMode = 'rfi';
+}
 // fast resume: reopen on the mode the user left last time (sporadic-use friendly)
 if (stats.lastMode && MODES[stats.lastMode]) activeModeId = stats.lastMode;
 renderTabs();
