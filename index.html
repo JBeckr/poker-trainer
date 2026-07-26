@@ -1441,7 +1441,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.12.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.12.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -4667,7 +4667,10 @@ const VIEWS = {
     label: 'vs Open', profiled: true, groupLabel: 'Hero', keyLabel: 'vs Opener',
     groups: () => groupMatchupsByHero(VS_OPEN_MATCHUPS, ['MP', 'CO', 'BTN', 'SB', 'BB']),
     matrix: (prof, key) => {
-      if (prof === 'pb3') {
+      // non-blind matchups: the book's polarized 3-bet fill chart. Blind-defense
+      // matchups (BB/SB vs opener) carry a real flatting range, so they fall through
+      // to the layer chart below which paints the green Call range.
+      if (prof === 'pb3' && !PB3_VO_TO_BLINDDEF[key]) {
         const ck = pb3ThreeBetKey(key);
         if (PB3_FILLS.threebet[ck]) {
           return { layers: [], fills: PB3_FILLS.threebet[ck], hero: null, restLabel: 'Fold / Call',
@@ -4679,7 +4682,7 @@ const VIEWS = {
       const e = VS_OPEN_DATA[prof][key];
       const pct3 = rangePct(e.threeBet);
       const pctC = rangePct(new Set([...e.call, ...e.dual, ...e.callMixed]));
-      return { layers: vsOpenLayers(e), hero: null,
+      return { layers: vsOpenLayers(e), hero: null, restLabel: 'Fold',
         title: key.replace('_vs_', ' vs ') + ' (' + PROFILES[prof].short + ') · 3-bet ' + pct3 + '% / call ' + pctC + '%' };
     }
   },
