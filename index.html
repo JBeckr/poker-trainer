@@ -1485,7 +1485,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.16.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.17.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2273,7 +2273,10 @@ for (const p of HERO_POSITIONS) RFI_DATA.gm[p] = { open: RANGES[p], mixed: new S
 for (const [p, r] of Object.entries(RFI_PB3_RAW)) {
   const open = expand(r.open), mixed = expand(r.mixed);
   assertDisjoint('RFI_PB3.' + p, { open, mixed });
-  RFI_DATA.pb3[p] = { open, mixed };
+  // Only hands the book prints as a FULL open cell are opens. The `mixed` list holds
+  // the partially-coloured cells; they are folds here, both in grading and on the
+  // chart (kept in the raw data as documentation of what the book shows).
+  RFI_DATA.pb3[p] = { open, mixed: new Set() };
 }
 
 // grid label at row i, col j (A=0 … 2=12): diagonal=pair, upper=suited, lower=offsuit
@@ -2405,7 +2408,7 @@ MODES.rfi = {
       correct, correctAction: ok[0],
       title, html,
       matrix: (prof === 'pb3' && pb3FillMatrix('open', s.pos, s.notation,
-                 s.pos + ' open (PB3) · ' + PB3_BOOK_OPEN[s.pos] + ' combos')) || {
+                 s.pos + ' open (PB3) · ' + rangePct(RFI_DATA.pb3[s.pos].open) + '%')) || {
         layers, hero: s.notation,
         title: s.pos + ' open (' + PROFILES[prof].short + ') · ' + rangePct(d.open) + '%' +
                (d.mixed.size ? ' + ' + rangePct(d.mixed) + '% mix' : '')
@@ -4673,7 +4676,7 @@ const PB3_FILL_RAW = {
   },
   fivebet: FIVEBET_RAW
 };
-function parsePb3Fills(spec, colors) {
+function parsePb3Fills(spec, colors, fullOnly) {
   const out = {};
   for (const tok of spec.trim().split(/\s+/)) {
     const eq = tok.indexOf('=');
@@ -4686,10 +4689,13 @@ function parsePb3Fills(spec, colors) {
       if (k === 'B') { border += v; continue; }          // borderline → absorbed below
       if (colors[k]) parts.push({ k, pct: v, color: colors[k] });
     }
-    // Borderline is not a separate action: hand its mass to the cell's real
+    const real = parts.reduce((n, p) => n + p.pct, 0);
+    // RFI charts: only a cell the book fills completely is an open. Anything partial
+    // (mixed-frequency) is a fold and keeps no fill at all.
+    if (fullOnly) { if (real >= 97) out[note] = parts; continue; }
+    // Elsewhere borderline is not a separate action: hand its mass to the cell's real
     // action(s), pro rata. Half-call/half-borderline therefore paints (and grades)
     // as a full call; a cell holding only borderline keeps no parts at all.
-    const real = parts.reduce((n, p) => n + p.pct, 0);
     if (border > 0 && real > 0) for (const p of parts) p.pct += border * p.pct / real;
     if (parts.length) out[note] = parts;
   }
@@ -4700,7 +4706,7 @@ const PB3_FILLS = (() => {
   for (const sec of Object.keys(PB3_FILL_RAW)) {
     out[sec] = {};
     for (const [key, spec] of Object.entries(PB3_FILL_RAW[sec])) {
-      out[sec][key] = parsePb3Fills(spec, PB3_FILL_COLORS[sec]);
+      out[sec][key] = parsePb3Fills(spec, PB3_FILL_COLORS[sec], sec === 'open');
     }
   }
   return out;
@@ -4772,7 +4778,7 @@ const VIEWS = {
       if (prof === 'pb3' && PB3_FILLS.open[key]) {
         return { layers: [], fills: PB3_FILLS.open[key], hero: null, restLabel: 'Fold',
           legend: pb3Legend('open'),
-          title: key + ' open (PB3) · ' + PB3_BOOK_OPEN[key] + ' combos' };
+          title: key + ' open (PB3) · ' + rangePct(RFI_DATA.pb3[key].open) + '% · nur volle Zellen' };
       }
       const d = RFI_DATA[prof][key];
       const layers = [{ set: d.open, css: 'in', label: 'Open' }];
