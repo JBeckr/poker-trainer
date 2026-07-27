@@ -872,10 +872,11 @@
   .cell.in       { background: var(--green-dark); }
   .cell.in-raise { background: var(--gold-dark);  }
   .cell.in-call  { background: var(--blue-dark);  }
-  .cell.in-mix     { background: linear-gradient(135deg, var(--green-dark) 50%, #182234 50%); }
-  .cell.in-dual    { background: linear-gradient(135deg, var(--gold-dark) 50%, var(--blue-dark) 50%); }
-  .cell.in-bluffmix{ background: linear-gradient(135deg, var(--gold-dark) 50%, #182234 50%); }
-  .cell.in-callmix { background: linear-gradient(135deg, var(--blue-dark) 50%, #182234 50%); }
+  /* split cells read as vertical bands everywhere, like the book's own charts */
+  .cell.in-mix     { background: linear-gradient(90deg, var(--green-dark) 50%, #182234 50%); }
+  .cell.in-dual    { background: linear-gradient(90deg, var(--gold-dark) 50%, var(--blue-dark) 50%); }
+  .cell.in-bluffmix{ background: linear-gradient(90deg, var(--gold-dark) 50%, #182234 50%); }
+  .cell.in-callmix { background: linear-gradient(90deg, var(--blue-dark) 50%, #182234 50%); }
   .cell.in-skip    { background: repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px); color: #b0bccb; }
   .cell.hero-cell {
     outline: 3px solid #ffffff;
@@ -1485,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.17.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.18.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1721,6 +1722,17 @@ function paintMatrix(gridEl, m) {
           cell.style.background = '#182234';
         }
       }
+      // exact split for a layer chart's mixed cells: overrides the layer's flat 50/50
+      // class with the real ratio the book prints, still as vertical bands
+      if (m.splits && m.splits[label]) {
+        let acc = 0; const stops = [];
+        for (const p of m.splits[label]) {
+          stops.push(p.color + ' ' + acc.toFixed(2) + '% ' + (acc + p.pct).toFixed(2) + '%');
+          acc += p.pct;
+        }
+        cell.style.background = 'linear-gradient(90deg,' + stops.join(',') + ')';
+        cell.classList.add('filled');
+      }
       if (m.weights && inLayer) {
         cell.textContent = label.length === 2 ? '6' : label[2] === 's' ? '4' : '12';
       } else {
@@ -1756,10 +1768,10 @@ function cssVarOf(cls) {
     'in': 'var(--green-dark)',
     'in-raise': 'var(--gold-dark)',
     'in-call': 'var(--blue-dark)',
-    'in-mix': 'linear-gradient(135deg, var(--green-dark) 50%, #182234 50%)',
-    'in-dual': 'linear-gradient(135deg, var(--gold-dark) 50%, var(--blue-dark) 50%)',
-    'in-bluffmix': 'linear-gradient(135deg, var(--gold-dark) 50%, #182234 50%)',
-    'in-callmix': 'linear-gradient(135deg, var(--blue-dark) 50%, #182234 50%)',
+    'in-mix': 'linear-gradient(90deg, var(--green-dark) 50%, #182234 50%)',
+    'in-dual': 'linear-gradient(90deg, var(--gold-dark) 50%, var(--blue-dark) 50%)',
+    'in-bluffmix': 'linear-gradient(90deg, var(--gold-dark) 50%, #182234 50%)',
+    'in-callmix': 'linear-gradient(90deg, var(--blue-dark) 50%, #182234 50%)',
     'in-skip': 'repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px)'
   };
   return map[cls] || '#182234';
@@ -2655,6 +2667,7 @@ MODES.vsopen = {
                  s.matchup.replace('_vs_', ' vs ') + ' (PB3) · 3-bet ' +
                  PB3_BOOK_3BET[pb3ThreeBetKey(s.matchup)] + ' combos')) || {
         layers, hero: s.notation,
+        splits: bdKey ? BLINDDEF[bdKey].mixSplit : undefined,
         title: s.matchup.replace('_vs_', ' vs ') + ' (' + PROFILES[prof].short + ') · 3-bet ' + pct3 + '% / call ' + pctC + '%'
       },
       bucket: s.matchup,
@@ -3826,6 +3839,7 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
   const parsed = parseScan(raw.cells);
   const act = {};                       // hand -> 'raise' | 'call' (modal action; in-range hands only)
   const mix = new Set();                // genuine ~50/50 hands: 3-bet AND call are both correct
+  const mixSplit = {};                  // hand -> exact vertical band ratio for those cells
   const border = new Set();             // tricky cells for the borderline-focus drill
   const skip = new Set();               // nothing is withheld from dealing any more
   const L = { raise: new Set(), call: new Set() };
@@ -3855,7 +3869,12 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     const sum = three + call;
     // Book splits some cells close to 50/50 between 3-betting and flatting — accept
     // either once the minority action holds at least a third of the cell.
-    if (Math.min(three, call) / sum >= 0.33) { mix.add(lb); border.add(lb); }
+    if (Math.min(three, call) / sum >= 0.33) {
+      mix.add(lb); border.add(lb);
+      // keep the real ratio so the chart can draw the cell as the book prints it
+      mixSplit[lb] = [{ pct: three / sum * 100, color: 'var(--gold-dark)' },
+                      { pct: call  / sum * 100, color: 'var(--blue-dark)' }];
+    }
     if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
     else { act[lb] = 'call'; L.call.add(lb); }
     if (sum < 72) border.add(lb);       // partly-coloured cells stay drill-worthy
@@ -3868,7 +3887,7 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
   if (mix.size) layers.push({ set: mix, css: 'in-dual', label: '3-bet/Call' });
   layers.push({ set: L.raise, css: 'in-raise', label: '3-bet' },
               { set: L.call,  css: 'in-call',  label: 'Call' });
-  BLINDDEF[key] = { ...raw, act, mix, border, skip, pool, layers };
+  BLINDDEF[key] = { ...raw, act, mix, mixSplit, border, skip, pool, layers };
 }
 
 // vs-Open's PB3 blind-facing-open matchups are derived from BLINDDEF — same pixel-scanned
@@ -3960,9 +3979,10 @@ MODES.blinddef = {
       title: isMix ? (correct ? '✓ Fine — MIXED (3-bet or call)' : '✗ Not this time — 3-bet or call')
                    : (correct ? '✓ Correct — ' + labels[rec] : '✗ Not this time — correct play is ' + labels[rec]),
       html,
-      matrix: pb3FillMatrix('threebet', s.chart, s.notation,
-                e.label + ' · 3-bet ' + PB3_BOOK_3BET[s.chart] + ' combos') ||
-              { layers: e.layers, hero: s.notation, title: e.label + ' · PB3' },
+      // the blind-defense chart itself (3-bet + flatting range), never the polarized
+      // 3-bet-section chart, which would hide the calls this mode is about
+      matrix: { layers: e.layers, splits: e.mixSplit, hero: s.notation, restLabel: 'Fold',
+                title: e.label + ' · PB3' },
       bucket: s.chart,
       tags: { handClass: handClass(s.notation),
               direction: correct ? null :
@@ -4807,7 +4827,9 @@ const VIEWS = {
       const e = VS_OPEN_DATA[prof][key];
       const pct3 = rangePct(e.threeBet);
       const pctC = rangePct(new Set([...e.call, ...e.dual, ...e.callMixed]));
+      const bdKey = prof === 'pb3' ? PB3_VO_TO_BLINDDEF[key] : null;
       return { layers: vsOpenLayers(e), hero: null, restLabel: 'Fold',
+        splits: bdKey ? BLINDDEF[bdKey].mixSplit : undefined,
         title: key.replace('_vs_', ' vs ') + ' (' + PROFILES[prof].short + ') · 3-bet ' + pct3 + '% / call ' + pctC + '%' };
     }
   },
@@ -4863,7 +4885,7 @@ const VIEWS = {
       const e = BLINDDEF[key];
       const raiseSet = new Set(), callSet = new Set();
       for (const [h, a] of Object.entries(e.act)) (a === 'raise' ? raiseSet : callSet).add(h);
-      return { layers: e.layers, hero: null, restLabel: 'Fold',
+      return { layers: e.layers, splits: e.mixSplit, hero: null, restLabel: 'Fold',
         title: e.label + ' · 3-bet ' + rangePct(raiseSet) + '% / call ' + rangePct(callSet) + '%' };
     }
   }
