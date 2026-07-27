@@ -104,7 +104,8 @@
     text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
   }
   .tg-head:hover { color: var(--text); }
-  .tg-head .tg-label { flex: 0 0 auto; }
+  /* fixed label width so "Preflop" and "Postflop" start their tabs at the same x */
+  .tg-head .tg-label { flex: 0 0 auto; min-width: 62px; text-align: left; }
   .tg-caret { display: inline-block; width: 10px; font-size: 0.6rem; }
   .tg-active { text-transform: none; letter-spacing: 0; color: var(--gold); font-weight: 800; margin-left: 4px; }
   .tab-group.collapsed .tg-tabs { display: none; }
@@ -123,6 +124,7 @@
     gap: 6px;
     transition: color 0.15s, border-color 0.15s;
   }
+  .tab .tier:empty { display: none; }   /* no medal yet → no stray gap before the label */
   .tab:hover { color: var(--text); }
   .tab.active {
     color: var(--gold);
@@ -1022,14 +1024,31 @@
     h1 { font-size: 1.15rem; }
     .subtitle { font-size: 0.68rem; }
     .stats { gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
-    .stat { min-width: 0; padding: 5px 9px; flex: 1 1 auto; }
-    .stat .val { font-size: 1rem; }
+    /* equal-basis so all four counters share one line instead of leaving "Best"
+       stranded on a row of its own */
+    .stat { min-width: 0; padding: 5px 6px; flex: 1 1 0; text-align: center; }
+    .stat .val { font-size: 0.9rem; }
+    .stat.stat-wide { flex-grow: 1.7; }                         /* "127/240" needs more room than "53%" */
+    .stat .lbl { font-size: 0.47rem; letter-spacing: 0; }       /* "ACCURACY" must fit the narrow tile */
     .stat-btn { padding: 5px 10px; flex: 0 0 auto; }
 
-    .tabbar { gap: 5px; }
-    .tab-row { gap: 5px; }
-    .tab-row .tg-label { flex-basis: 100%; margin-bottom: -2px; }  /* label on its own line */
-    .tab { padding: 7px 10px; font-size: 0.72rem; }
+    .tabbar { gap: 7px; }
+    .tab-row { gap: 4px; }
+    /* Group header gets its own line: otherwise the tabs wrap into a narrow column
+       beside it, and since "Preflop" and "Postflop" are different widths the two
+       blocks end up indented differently. Tabs then tile in an even grid so the
+       rows line up instead of wrapping ragged. */
+    .tab-group .tg-head { flex: 0 0 100%; padding: 0 0 1px; }
+    .tab-group .tg-tabs {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 5px;
+      width: 100%;
+    }
+    .tab {
+      padding: 8px 6px; font-size: 0.72rem; letter-spacing: 0.2px;
+      justify-content: center; text-align: center; white-space: nowrap;
+    }
     .tab .ch { display: none; }                 /* hide chapter labels on phone */
     .profile-pills .pp-label { display: none; }
     .pill { padding: 6px 12px; }
@@ -1087,7 +1106,7 @@
       <span class="dh-ring" id="dh-ring"><span class="dh-num" id="dh-num">0</span></span>
       <span class="dh-flame" id="dh-flame">🔥 0</span>
     </button>
-    <div class="stat"><div class="val good" id="stat-score">0/0</div><div class="lbl">Score</div></div>
+    <div class="stat stat-wide"><div class="val good" id="stat-score">0/0</div><div class="lbl">Score</div></div>
     <div class="stat"><div class="val" id="stat-acc">–</div><div class="lbl">Accuracy</div></div>
     <div class="stat"><div class="val streak" id="stat-streak">0</div><div class="lbl">Streak</div></div>
     <div class="stat"><div class="val" id="stat-best">0</div><div class="lbl">Best</div></div>
@@ -1441,7 +1460,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.14.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.14.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
