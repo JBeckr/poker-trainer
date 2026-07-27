@@ -1301,7 +1301,7 @@
 
 <div class="toast" id="toast"></div>
 
-<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, 5-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts. In the 📖 viewer they are drawn <b>exactly as printed</b>: each cell keeps the book's frequency split and its original legend colours (note the palette means different actions per chapter). The book's yellow &ldquo;borderline&rdquo; bands are shown too (muted gold) — mixed-frequency cells accept either action; Blind Def additionally removes hands whose cell is &lt;50% a real action. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); the 📊 Dashboard shows your accuracy over time, an accuracy-by-hand heatmap, per-mode breakdown, leaks and tendencies, and can back up your progress as a file. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
+<footer>Keys shown on each button · <kbd>Space</kbd> next hand · <b>📖 Ranges</b> to browse any chart. Two profiles: <b>GM</b> = The Grinder's Manual (Figs 5–16, 28–36, 53, 57); <b>PB3</b> = BluffTheSpot Preflop Bible Vol. 3, <b>default</b>. Every PB3 chart (Open, vs Open, vs 3-Bet, 5-Bet, Blind Def) was pixel-scanned hand-by-hand from the book and validated against its stated combo counts. In the 📖 viewer they are drawn <b>exactly as printed</b>: each cell keeps the book's frequency split and its original legend colours (note the palette means different actions per chapter). The book's yellow &ldquo;borderline&rdquo; bands are absorbed into each cell's real action, so a cell printed as half call / half borderline counts as a full call — mixed-frequency cells accept either action; cells that are borderline only are folds. ISO, Sizing, Stack Depth &amp; the postflop drills (C-Bet, Flop Defense, Turn Barrel, River, Value Bet, 3-Bet Pot) use simplified GM-style heuristic models — only clear-cut spots are shown. River is an original extension of Ch 12's barrelling idea to a third street, not a book chart. Flop Defense/Turn Barrel/River/Value Bet difficulty unlocks as your accuracy rises. Auto-advance delay is adjustable (⏱️ bar); the 📊 Dashboard shows your accuracy over time, an accuracy-by-hand heatmap, per-mode breakdown, leaks and tendencies, and can back up your progress as a file. Installed as an app? <b>🔄 Updates</b> shows when a new version is ready and lets you switch between one-click and fully automatic updates. Ranges for study, not gospel.</footer>
 
 <script>
 /* ================================================================
@@ -1441,7 +1441,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.12.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.13.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -3563,10 +3563,15 @@ function parse3bet(str) {
     const [hand, spec] = tok.split('=');
     const cats = {};
     for (const piece of spec.split('/')) { const c = piece[0]; cats[c] = (cats[c] || 0) + (parseInt(piece.slice(1)) || 0); }
+    // Borderline (B) is absorbed into the cell's real actions rather than counted
+    // as its own answer: a half-call/half-borderline cell is a pure call. Only a
+    // cell that holds nothing but borderline falls through to fold.
+    const real = Object.keys(cats).filter(c => c !== 'B');
+    const cls = real.length ? real : Object.keys(cats);
     const actions = new Set();
-    for (const c of Object.keys(cats)) actions.add(c === '4' ? 'fourbet' : c === 'C' ? 'call' : 'fold');
+    for (const c of cls) actions.add(c === '4' ? 'fourbet' : c === 'C' ? 'call' : 'fold');
     let majCat = null, majPct = -1;
-    for (const c in cats) if (cats[c] > majPct) { majPct = cats[c]; majCat = c; }
+    for (const c of cls) if (cats[c] > majPct) { majPct = cats[c]; majCat = c; }
     map[hand] = { actions, majCat, hasB: !!cats['B'], hasValue4: !!cats['4'] };
   }
   return map;
@@ -3653,7 +3658,7 @@ MODES.vs3bet = {
     let flavor;
     if (ok.has('fourbet')) flavor = VALUE_4BET.has(s.notation) ? ' — 4-bet for value.' : ' — the 4-bet is a bluff with good blockers.';
     else if (ok.has('call')) flavor = ' — strong enough to continue against the 3-bet.';
-    else flavor = info.hasB ? ' — borderline: fold by default, a 4-bet bluff only vs players who over-fold to 4-bets.' : ' — too weak to continue.';
+    else flavor = ' — too weak to continue.';
     const rp = VS3BET_RANGEPCT[s.matchup];
     let title;
     if (isMix) title = (correct ? '✓ Fine — ' : '✗ ') + okList.join(' / ') + ' both OK';
@@ -3729,32 +3734,34 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
   const mix = new Set();                // genuine ~50/50 hands: 3-bet AND call are both correct
   const border = new Set();             // tricky cells for the borderline-focus drill
   const skip = new Set();               // clear borderline hands: removed from dealing
-  const L = { raise: new Set(), call: new Set(), foldB: new Set(), foldL: new Set() };
+  const L = { raise: new Set(), call: new Set() };
   for (const lb of ALL_HAND_LABELS) {
     const fr = parsed[lb];
     if (!fr) continue;                  // uncolored = plain fold (stays in pool for calibration)
-    const three = fr['3'] || 0, call = fr['C'] || 0;   // real actions (solid colours)
+    let three = fr['3'] || 0, call = fr['C'] || 0;     // real actions (solid colours)
     const bl3 = fr['B'] || 0, blC = fr['L'] || 0;      // borderline colours
+    const realBefore = three + call;
+    // Borderline is not its own answer: give its mass to the cell's real action(s),
+    // pro rata. A cell the book prints as half call / half borderline is therefore a
+    // FULL call. Cells holding only borderline keep no real action and drop out.
+    const bl = bl3 + blC;
+    if (bl > 0 && realBefore > 0) { three += bl * three / realBefore; call += bl * call / realBefore; }
     if (three + call >= 50) {           // ≥ half the cell is a real action → in the range
       // Book plays some hands close to 50/50 between 3-bet and call — accept either
       // when neither action clearly dominates (minority ≥ 40% of the real-action mass).
       if (Math.min(three, call) / (three + call) >= 0.4) { mix.add(lb); border.add(lb); }
       if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
       else { act[lb] = 'call'; L.call.add(lb); }
-      if (bl3 || blC || three + call < 72) border.add(lb);   // marginal / partly-borderline include
-    } else {                            // clear borderline hand → removed from the drilled range
+      if (realBefore < 72) border.add(lb);                   // marginal cells stay drill-worthy
+    } else {                            // no real action at all → plain fold, not drilled
       skip.add(lb);
-      if (three + call >= 35) border.add(lb);                // the tricky just-below-the-cut folds
-      if (bl3 >= blC && bl3 > 0) L.foldB.add(lb);
-      else if (blC > 0) L.foldL.add(lb);
+      if (realBefore >= 35) border.add(lb);                  // the tricky just-below-the-cut folds
     }
   }
   const pool = ALL_HAND_LABELS.filter(lb => !skip.has(lb));
   BLINDDEF[key] = { ...raw, act, mix, border, skip, pool, layers: [
     { set: L.raise, css: 'in-raise',    label: '3-bet' },
-    { set: L.call,  css: 'in-call',     label: 'Call' },
-    { set: L.foldB, css: 'in-bluffmix', label: 'Borderline 3-bet (removed)' },
-    { set: L.foldL, css: 'in-callmix',  label: 'Borderline call (removed)' }
+    { set: L.call,  css: 'in-call',     label: 'Call' }
   ]};
 }
 
@@ -3835,7 +3842,7 @@ MODES.blinddef = {
       ? '<b>3-bet to ' + fmtBB(tbSize) + 'bb</b> — the SB plays pure 3-bet-or-fold: initiative, fold equity, no capped flatting range, and it shuts the BB out.'
       : '<b>3-bet to ' + fmtBB(tbSize) + 'bb</b> — part of the BB\'s depolarized 3-bet range.';
     else if (kind === 'call') reason = '<b>call</b> — you close the action at a discount; too strong to fold, not a 3-bet.';
-    else reason = '<b>fold</b> — outside the defending range (clear borderline hands are removed).';
+    else reason = '<b>fold</b> — outside the defending range.';
     let html = '<b>' + s.notation + '</b>: ' + reason +
                ' <span style="color:var(--muted)">(' + e.label + ' · PB3, ≥50%-coloured cells)</span>';
     if (!isMix && e.hero === 'SB' && action === 'call') {
@@ -3849,7 +3856,7 @@ MODES.blinddef = {
       html,
       matrix: pb3FillMatrix('threebet', s.chart, s.notation,
                 e.label + ' · 3-bet ' + PB3_BOOK_3BET[s.chart] + ' combos') ||
-              { layers: e.layers, hero: s.notation, title: e.label + ' · PB3 (borderline removed)' },
+              { layers: e.layers, hero: s.notation, title: e.label + ' · PB3' },
       bucket: s.chart,
       tags: { handClass: handClass(s.notation),
               direction: correct ? null :
@@ -4511,21 +4518,22 @@ const FIVEBET_MATCHUPS = Object.keys(FIVEBET_RAW);
    each cell keeps the exact frequency split the book prints and renders as
    proportional colour bands using the book's own legend colours.
    Note the palette means DIFFERENT actions per chapter — "calling" is teal in
-   the 4-bet charts but purple in the 5-bet charts.
-   The yellow "borderline" bands are deliberately dropped: those areas render
-   colourless, as requested. */
-const PB3_BORDER = '#cdae3d';   // the book's yellow "borderline" band (muted for the dark theme)
+   the 4-bet charts but purple in the 5-bet charts. */
+/* The book's yellow "borderline" band is NOT rendered as its own colour: it is
+   absorbed into the cell's real action (see parsePb3Fills), so a cell the book
+   prints as half call / half borderline shows — and grades — as a full call.
+   Cells that carry nothing but borderline stay empty (= fold). */
 const PB3_FILL_COLORS = {
-  open:     { R: '#009999', B: PB3_BORDER },
-  threebet: { R: '#9966ff', B: PB3_BORDER },
-  fourbet:  { '4': '#33ccff', C: '#009999', F: '#4472c4', B: PB3_BORDER },
-  fivebet:  { '5': '#33ccff', C: '#9966ff', F: '#4472c4', B: PB3_BORDER }
+  open:     { R: '#009999' },
+  threebet: { R: '#9966ff' },
+  fourbet:  { '4': '#33ccff', C: '#009999', F: '#4472c4' },
+  fivebet:  { '5': '#33ccff', C: '#9966ff', F: '#4472c4' }
 };
 const PB3_FILL_LABELS = {
-  open:     { R: 'Open', B: 'Borderline (nur vs tight/schwach)' },
-  threebet: { R: '3-Bet', B: 'Borderline (nur vs loose)' },
-  fourbet:  { '4': '4-Bet', C: 'Call vs 3-Bet', F: 'Fold vs 3-Bet', B: 'Borderline → fold' },
-  fivebet:  { '5': '5-Bet (all-in)', C: 'Call vs 4-Bet', F: 'Fold vs 4-Bet', B: 'Borderline → fold' }
+  open:     { R: 'Open' },
+  threebet: { R: '3-Bet' },
+  fourbet:  { '4': '4-Bet', C: 'Call vs 3-Bet', F: 'Fold vs 3-Bet' },
+  fivebet:  { '5': '5-Bet (all-in)', C: 'Call vs 4-Bet', F: 'Fold vs 4-Bet' }
 };
 const PB3_FILL_RAW = {
   open: {
@@ -4568,10 +4576,18 @@ function parsePb3Fills(spec, colors) {
     const eq = tok.indexOf('=');
     if (eq < 0) continue;
     const note = tok.slice(0, eq), parts = [];
+    let border = 0;
     for (const p of tok.slice(eq + 1).split('/')) {
       const [k, pct] = p.split(':');
-      if (colors[k]) parts.push({ k, pct: parseFloat(pct), color: colors[k] });
+      const v = parseFloat(pct) || 0;
+      if (k === 'B') { border += v; continue; }          // borderline → absorbed below
+      if (colors[k]) parts.push({ k, pct: v, color: colors[k] });
     }
+    // Borderline is not a separate action: hand its mass to the cell's real
+    // action(s), pro rata. Half-call/half-borderline therefore paints (and grades)
+    // as a full call; a cell holding only borderline keeps no parts at all.
+    const real = parts.reduce((n, p) => n + p.pct, 0);
+    if (border > 0 && real > 0) for (const p of parts) p.pct += border * p.pct / real;
     if (parts.length) out[note] = parts;
   }
   return out;
