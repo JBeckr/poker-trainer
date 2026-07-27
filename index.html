@@ -1485,7 +1485,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.15.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.16.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -3824,33 +3824,40 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
   const act = {};                       // hand -> 'raise' | 'call' (modal action; in-range hands only)
   const mix = new Set();                // genuine ~50/50 hands: 3-bet AND call are both correct
   const border = new Set();             // tricky cells for the borderline-focus drill
-  const skip = new Set();               // clear borderline hands: removed from dealing
+  const skip = new Set();               // nothing is withheld from dealing any more
   const L = { raise: new Set(), call: new Set() };
+  // A colour covering less than this much of a cell is antialiasing along a colour
+  // boundary, not an action — e.g. a scan reading "4% call / 96% grey" is a fold cell
+  // whose edge blended. Real splits in these charts never go below ~8%.
+  const NOISE = 5;
   for (const lb of ALL_HAND_LABELS) {
     const fr = parsed[lb];
-    if (!fr) continue;                  // uncolored = plain fold (stays in pool for calibration)
-    let three = fr['3'] || 0, call = fr['C'] || 0;     // real actions (solid colours)
-    const bl3 = fr['B'] || 0;                          // yellow  = borderline 3-bet
-    const realBefore = three + call;
-    // The book prints TWO borderline colours and they mean different things here:
-    //   yellow ("borderline, only 3-bet vs loose") is folded into the cell's real
-    //     action(s) pro rata — half-call/half-yellow is therefore a FULL call;
-    //   light green ("borderline, only call vs loose players") is ignored outright,
-    //     so a cell carrying only light green is a plain fold (fr['L'] never read).
-    if (bl3 > 0 && realBefore > 0) { three += bl3 * three / realBefore; call += bl3 * call / realBefore; }
-    if (three + call >= 50) {           // ≥ half the cell is a real action → in the range
-      // Book splits some cells close to 50/50 between 3-betting and flatting — accept
-      // either once the minority action holds at least a third of the cell.
-      if (Math.min(three, call) / (three + call) >= 0.33) { mix.add(lb); border.add(lb); }
-      if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
-      else { act[lb] = 'call'; L.call.add(lb); }
-      if (realBefore < 72) border.add(lb);                   // marginal cells stay drill-worthy
-    } else {                            // no real action at all → plain fold, not drilled
-      skip.add(lb);
-      if (realBefore >= 35) border.add(lb);                  // the tricky just-below-the-cut folds
+    if (!fr) continue;                  // uncoloured = plain fold
+    // Light green ("borderline: only call vs loose players") is ignored outright, so a
+    // cell carrying nothing but light green is a fold. Every other colour counts: the
+    // yellow 3-bet borderline is folded into the cell's real action pro rata (or stands
+    // on its own as a 3-bet when the cell has no solid colour). No coverage threshold —
+    // any genuine colour puts the hand in the range.
+    let three = fr['3'] || 0, call = fr['C'] || 0;
+    let yellow = fr['B'] || 0;
+    if (three < NOISE) three = 0;
+    if (call   < NOISE) call   = 0;
+    if (yellow < NOISE) yellow = 0;
+    const real = three + call;
+    if (!real && !yellow) continue;     // only light green / grey → fold
+    if (yellow) {
+      if (real) { three += yellow * three / real; call += yellow * call / real; }
+      else three += yellow;             // yellow alone is a 3-bet
     }
+    const sum = three + call;
+    // Book splits some cells close to 50/50 between 3-betting and flatting — accept
+    // either once the minority action holds at least a third of the cell.
+    if (Math.min(three, call) / sum >= 0.33) { mix.add(lb); border.add(lb); }
+    if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
+    else { act[lb] = 'call'; L.call.add(lb); }
+    if (sum < 72) border.add(lb);       // partly-coloured cells stay drill-worthy
   }
-  const pool = ALL_HAND_LABELS.filter(lb => !skip.has(lb));
+  const pool = ALL_HAND_LABELS.slice();   // every hand is drillable: in range, or a fold
   // Cells the book splits ~evenly get their own two-tone layer (first match wins in
   // paintMatrix), so "either action is fine" is visible instead of hidden behind the
   // modal action's solid colour.
