@@ -1441,7 +1441,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.13.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.14.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -3739,17 +3739,18 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     const fr = parsed[lb];
     if (!fr) continue;                  // uncolored = plain fold (stays in pool for calibration)
     let three = fr['3'] || 0, call = fr['C'] || 0;     // real actions (solid colours)
-    const bl3 = fr['B'] || 0, blC = fr['L'] || 0;      // borderline colours
+    const bl3 = fr['B'] || 0;                          // yellow  = borderline 3-bet
     const realBefore = three + call;
-    // Borderline is not its own answer: give its mass to the cell's real action(s),
-    // pro rata. A cell the book prints as half call / half borderline is therefore a
-    // FULL call. Cells holding only borderline keep no real action and drop out.
-    const bl = bl3 + blC;
-    if (bl > 0 && realBefore > 0) { three += bl * three / realBefore; call += bl * call / realBefore; }
+    // The book prints TWO borderline colours and they mean different things here:
+    //   yellow ("borderline, only 3-bet vs loose") is folded into the cell's real
+    //     action(s) pro rata — half-call/half-yellow is therefore a FULL call;
+    //   light green ("borderline, only call vs loose players") is ignored outright,
+    //     so a cell carrying only light green is a plain fold (fr['L'] never read).
+    if (bl3 > 0 && realBefore > 0) { three += bl3 * three / realBefore; call += bl3 * call / realBefore; }
     if (three + call >= 50) {           // ≥ half the cell is a real action → in the range
-      // Book plays some hands close to 50/50 between 3-bet and call — accept either
-      // when neither action clearly dominates (minority ≥ 40% of the real-action mass).
-      if (Math.min(three, call) / (three + call) >= 0.4) { mix.add(lb); border.add(lb); }
+      // Book splits some cells close to 50/50 between 3-betting and flatting — accept
+      // either once the minority action holds at least a third of the cell.
+      if (Math.min(three, call) / (three + call) >= 0.33) { mix.add(lb); border.add(lb); }
       if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
       else { act[lb] = 'call'; L.call.add(lb); }
       if (realBefore < 72) border.add(lb);                   // marginal cells stay drill-worthy
@@ -3759,10 +3760,14 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     }
   }
   const pool = ALL_HAND_LABELS.filter(lb => !skip.has(lb));
-  BLINDDEF[key] = { ...raw, act, mix, border, skip, pool, layers: [
-    { set: L.raise, css: 'in-raise',    label: '3-bet' },
-    { set: L.call,  css: 'in-call',     label: 'Call' }
-  ]};
+  // Cells the book splits ~evenly get their own two-tone layer (first match wins in
+  // paintMatrix), so "either action is fine" is visible instead of hidden behind the
+  // modal action's solid colour.
+  const layers = [];
+  if (mix.size) layers.push({ set: mix, css: 'in-dual', label: '3-bet/Call' });
+  layers.push({ set: L.raise, css: 'in-raise', label: '3-bet' },
+              { set: L.call,  css: 'in-call',  label: 'Call' });
+  BLINDDEF[key] = { ...raw, act, mix, border, skip, pool, layers };
 }
 
 // vs-Open's PB3 blind-facing-open matchups are derived from BLINDDEF — same pixel-scanned
@@ -4748,17 +4753,14 @@ const VIEWS = {
   blinddef: {
     label: 'Blind Def (PB3)', profiled: false, groupLabel: 'Hero', keyLabel: 'vs Opener',
     groups: () => groupMatchupsByHero(Object.keys(BLINDDEF), ['SB', 'BB']),
+    // Always the blind-defense chart itself (3-bet AND the flatting range) — the
+    // 3-bet-section fill chart would hide the calls this whole mode is about.
     matrix: (prof, key) => {
-      if (PB3_FILLS.threebet[key]) {
-        return { layers: [], fills: PB3_FILLS.threebet[key], hero: null, restLabel: 'Fold / Call',
-          legend: pb3Legend('threebet'),
-          title: key.replace('_vs_', ' vs ').replace('EP', 'UTG/MP') +
-                 ' · 3-bet ' + PB3_BOOK_3BET[key] + ' combos' };
-      }
       const e = BLINDDEF[key];
-      const raiseSet = e.layers[0].set, callSet = e.layers[1].set;
-      return { layers: e.layers, hero: null,
-        title: e.label + ' · 3-bet ' + rangePct(raiseSet) + '% / call ' + rangePct(callSet) + '% (borderline removed)' };
+      const raiseSet = new Set(), callSet = new Set();
+      for (const [h, a] of Object.entries(e.act)) (a === 'raise' ? raiseSet : callSet).add(h);
+      return { layers: e.layers, hero: null, restLabel: 'Fold',
+        title: e.label + ' · 3-bet ' + rangePct(raiseSet) + '% / call ' + rangePct(callSet) + '%' };
     }
   }
 };
