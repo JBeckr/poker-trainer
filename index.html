@@ -72,6 +72,7 @@
     min-width: 74px;
   }
   .stat .val { font-size: 1.15rem; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .stat .val small { font-size: 0.68em; color: var(--muted); }   /* streak target, e.g. 7/10 */
   .stat .lbl { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); }
   .stat .val.good { color: var(--green); }
   .stat .val.streak { color: var(--amber); }
@@ -462,6 +463,20 @@
   .cal-grid .cd { width: 12px; height: 12px; border-radius: 3px; background: #182234; }
   .cal-legend { display: flex; align-items: center; gap: 5px; margin-top: 9px; font-family: var(--mono); font-size: 0.54rem; color: var(--muted); }
   .cal-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  /* ---------- Streak challenges (per mode) ---------- */
+  .sc-grp { font-family: var(--mono); font-size: 0.55rem; letter-spacing: 1.5px; text-transform: uppercase;
+            color: var(--green); margin: 12px 0 4px; }
+  .sc-grp:first-child { margin-top: 0; }
+  .sc-row { display: flex; align-items: center; gap: 9px; padding: 3px 0; font-size: 0.76rem; }
+  .sc-row.active .sc-name { color: var(--gold); font-weight: 700; }
+  .sc-name { flex: 0 0 104px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sc-stars { flex: 0 0 auto; font-size: 0.72rem; letter-spacing: 1px; color: var(--amber); }
+  .sc-stars .off { color: #2a3a50; }
+  .sc-bar { flex: 1; min-width: 36px; height: 6px; background: #182234; border-radius: 3px; overflow: hidden; }
+  .sc-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); }
+  .sc-row.done .sc-bar i { background: var(--green); }
+  .sc-val { flex: 0 0 52px; text-align: right; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
+  .sc-live { flex: 0 0 auto; font-family: var(--mono); font-size: 0.66rem; color: var(--amber); }
   /* goal-reached confetti */
   .confetti-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; overflow: hidden; }
   .confetti-pc { position: absolute; top: -18px; width: 8px; height: 13px; opacity: 0.95; animation: confetti-fall linear forwards; }
@@ -1080,6 +1095,11 @@
     .matrix { grid-template-columns: repeat(13, 1fr); grid-auto-rows: auto; width: 100%; }
     .cell { font-size: 0.44rem; aspect-ratio: 1; }
 
+    .sc-row { gap: 6px; font-size: 0.7rem; }
+    .sc-name { flex: 0 0 76px; }
+    .sc-val { flex: 0 0 44px; font-size: 0.6rem; }
+    .sc-stars { font-size: 0.62rem; letter-spacing: 0; }
+
     .pos-rows { gap: 10px; }
     .viewer-overlay { padding: 14px 8px; }
     .viewer-panel { padding: 14px 12px; }
@@ -1167,6 +1187,11 @@
           <i style="background:#182234"></i><i style="background:#0e4728"></i><i style="background:#15723f"></i><i style="background:#1f9d63"></i><i style="background:#2bd47e"></i>
           mehr</div>
       </div>
+    </div>
+
+    <div class="dash-card" style="margin-bottom:12px">
+      <div class="dash-h">Streak-Challenges <span class="dash-hsub" id="streak-sub"></span></div>
+      <div id="dash-streaks"></div>
     </div>
 
     <div class="dash-grid">
@@ -1460,7 +1485,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.14.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.15.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1766,11 +1791,25 @@ function renderFeedback(res) {
 }
 
 /* ----- header stats + buckets ----- */
+/* ----- streak challenges: milestones per mode -----
+   Derived from each mode's existing best-streak counter, so the challenges
+   apply retroactively to progress made before they existed. */
+const STREAK_MILESTONES = [10, 25, 50];
+function streakInfo(sid) {
+  const ms = stats.modes[sid] || {};
+  const cur = ms.streak || 0, best = ms.best || 0;
+  return { cur, best,
+    cleared: STREAK_MILESTONES.filter(m => best >= m).length,
+    next: STREAK_MILESTONES.find(m => best < m) || null };
+}
 function renderStats() {
   const ms = modeStats(statsId());
   $('stat-score').textContent = ms.correct + '/' + ms.total;
   $('stat-acc').textContent = ms.total ? Math.round(ms.correct / ms.total * 100) + '%' : '–';
-  $('stat-streak').textContent = ms.streak;
+  const si = streakInfo(statsId());
+  // show how far the running streak is from this mode's next milestone
+  $('stat-streak').innerHTML = si.next ? si.cur + '<small>/' + si.next + '</small>'
+                                       : si.cur + '<small> ✓</small>';
   $('stat-best').textContent = ms.best;
   renderDailyHud();
 }
@@ -2069,6 +2108,33 @@ function renderDailyCard() {
   }
   $('daily-cal').innerHTML = html;
 }
+function renderStreakChallenges() {
+  const box = $('dash-streaks'); if (!box) return;
+  let html = '', cleared = 0, total = 0;
+  for (const grp of MODE_GROUPS) {
+    html += '<div class="sc-grp">' + grp.label + '</div>';
+    for (const id of grp.modes) {
+      const si = streakInfo(statsId(id));
+      cleared += si.cleared; total += STREAK_MILESTONES.length;
+      const stars = STREAK_MILESTONES.map((m, i) =>
+        i < si.cleared ? '★' : '<span class="off">☆</span>').join('');
+      const pct = si.next ? Math.min(100, Math.round(si.best / si.next * 100)) : 100;
+      const isActive = id === activeModeId;
+      html += '<div class="sc-row' + (isActive ? ' active' : '') + (si.next ? '' : ' done') + '">' +
+        '<div class="sc-name">' + MODES[id].label + '</div>' +
+        '<div class="sc-stars" title="' + STREAK_MILESTONES.join(' / ') + ' in Folge">' + stars + '</div>' +
+        '<div class="sc-bar"><i style="width:' + pct + '%"></i></div>' +
+        (isActive && si.cur > 0 ? '<div class="sc-live" title="laufende Serie">🔥' + si.cur + '</div>' : '') +
+        '<div class="sc-val">' + (si.next ? si.best + '/' + si.next : si.best + ' ✓') + '</div>' +
+      '</div>';
+    }
+  }
+  box.innerHTML = html;
+  const sub = $('streak-sub');
+  if (sub) sub.textContent = '· ' + cleared + '/' + total + ' geschafft · Ziel ' +
+    STREAK_MILESTONES.join(' / ') + ' richtige in Folge je Modus';
+}
+
 function changeDailyGoal(delta) {
   const d = dailyData();
   d.goal = Math.max(10, Math.min(300, (d.goal || 50) + delta));
@@ -2089,10 +2155,16 @@ function onAction(actionId) {
   const bucket = res.bucket || 'all';
   if (!ms.buckets[bucket]) ms.buckets[bucket] = { t:0, c:0 };
   ms.buckets[bucket].t++;
+  const prevBest = ms.best || 0;
   if (res.correct) {
     ms.correct++; ms.buckets[bucket].c++;
     ms.streak++;
     if (ms.streak > ms.best) ms.best = ms.streak;
+    // per-mode streak challenge: announce a milestone the first time it is reached
+    if (STREAK_MILESTONES.includes(ms.streak) && ms.streak > prevBest) {
+      showToast('🔥 ' + ms.streak + 'er-Streak in ' + MODES[activeModeId].label + ' geknackt!');
+      if (ms.streak >= STREAK_MILESTONES[STREAK_MILESTONES.length - 1]) confettiBurst();
+    }
   } else {
     ms.streak = 0;
   }
@@ -4941,6 +5013,7 @@ function renderProgress() {
   $('dash-sub').textContent = (g.counters.answers || 0) + ' hands · ' + PROFILES[activeProfile()].short + ' profile';
 
   renderDailyCard();
+  renderStreakChallenges();
 
   // KPI strip
   const kpi = (lab, val, sub, accent) => '<div class="dash-kpi' + (accent ? ' accent' : '') +
