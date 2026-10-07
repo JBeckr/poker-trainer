@@ -1486,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.18.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.19.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2263,33 +2263,32 @@ const POS_DESC = {
   SB:  'Small blind — raise-or-fold: wide but out of position postflop.'
 };
 
-// BTS Preflop Bible RFI charts (pp. 6-10): teal = open, yellow = mixed frequency
-// Pixel-scanned from PB3 pp. 6-10 (teal = "Standard opening range", yellow = book's own
-// "Borderline hands, only raise vs tight/weaker players" — kept as a separate mixed tier,
-// never merged into open, since the book itself marks them non-default). Verified against
-// the book's stated combo counts (UTG 213.5, MP 269, CO 362, BTN 568, SB 594) within ~2%.
-const RFI_PB3_RAW = {
-  UTG: { open: ['AA','AKs','AQs','AJs','ATs','A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s','AKo','KK','KQs','KJs','KTs','K9s','AQo','KQo','QQ','QJs','QTs','AJo','JJ','JTs','TT','T9s','99','98s','88','87s','77','76s','66','65s','55','44'],
-         mixed: ['K8s','Q9s','KJo','J9s','ATo','54s','33','22'] },
-  MP:  { open: ['AA','AKs','AQs','AJs','ATs','A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s','AKo','KK','KQs','KJs','KTs','K9s','K8s','AQo','KQo','QQ','QJs','QTs','Q9s','AJo','KJo','QJo','JJ','JTs','J9s','ATo','TT','T9s','99','98s','88','87s','77','76s','66','65s','55','54s','44'],
-         mixed: ['K7s','K6s','K5s','Q8s','J8s','KTo','QTo','T8s','A9o','97s','86s','33','22'] },
-  CO:  { open: ['AA','AKs','AQs','AJs','ATs','A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s','AKo','KK','KQs','KJs','KTs','K9s','K8s','K7s','K6s','K5s','AQo','KQo','QQ','QJs','QTs','Q9s','Q8s','Q7s','AJo','KJo','QJo','JJ','JTs','J9s','J8s','J7s','ATo','KTo','QTo','JTo','TT','T9s','T8s','A9o','99','98s','97s','88','87s','86s','77','76s','66','65s','55','54s','44','33','22'],
-         mixed: ['K4s','K3s','Q6s','Q5s','T7s','A8o','A7o','A5o','43s'] },
-  BTN: { open: ['AA','AKs','AQs','AJs','ATs','A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s','AKo','KK','KQs','KJs','KTs','K9s','K8s','K7s','K6s','K5s','K4s','K3s','K2s','AQo','KQo','QQ','QJs','QTs','Q9s','Q8s','Q7s','Q6s','Q5s','Q4s','Q3s','AJo','KJo','QJo','JJ','JTs','J9s','J8s','J7s','J6s','J5s','ATo','KTo','QTo','JTo','TT','T9s','T8s','T7s','T6s','A9o','K9o','Q9o','J9o','T9o','99','98s','97s','96s','A8o','K8o','88','87s','86s','A7o','77','76s','75s','A6o','66','65s','64s','A5o','55','54s','A4o','44','A3o','33','22'],
-         mixed: ['Q2s','J4s','J3s','T5s','95s','Q8o','J8o','T8o','98o','85s','84s','K7o','87o','74s','73s','63s','53s','43s','A2o'] },
-  SB:  { open: ['AA','AKs','AQs','AJs','ATs','A9s','A8s','A7s','A6s','A5s','A4s','A3s','A2s','AKo','KK','KQs','KJs','KTs','K9s','K8s','K7s','K6s','K5s','K4s','K3s','K2s','AQo','KQo','QQ','QJs','QTs','Q9s','Q8s','Q7s','Q6s','Q5s','Q4s','Q3s','Q2s','AJo','KJo','QJo','JJ','JTs','J9s','J8s','J7s','J6s','J5s','J4s','ATo','KTo','QTo','JTo','TT','T9s','T8s','T7s','T6s','A9o','K9o','Q9o','J9o','T9o','99','98s','97s','96s','A8o','K8o','J8o','T8o','98o','88','87s','86s','85s','A7o','77','76s','75s','74s','A6o','66','65s','64s','A5o','55','54s','53s','A4o','44','33','22'],
-         mixed: ['J3s','J2s','T5s','T4s','T3s','95s','94s','93s','Q8o','84s','83s','K7o','Q7o','J7o','T7o','97o','87o','73s','86o','76o','63s','62s','52s','43s','42s','A3o','32s','A2o'] }
+// Opening ranges (profile PB3), supplied directly by the user — raise or fold only,
+// anything not listed is a fold. Written in range notation and expanded at load.
+// "54s+" style connectors slide up the grid (54s, 65s, 76s, … JTs); every other "+"
+// token raises the kicker with the high card fixed (A2s+ = A2s..AKs).
+const RFI_PB3_TEXT = {
+  UTG: '44+, A2s+, K9s+, Q9s+, JTs, KTo+, ATo+',
+  MP:  '44+, A2s+, K5s+, Q8s+, J9s+, QTo+, KTo+, A9o+, 54s+',
+  CO:  '33+, A2s+, K2s+, Q5s+, J8s+, JTo+, QTo+, KTo+, A7o+, A5o, 54s+',
+  BTN: '22+, A2s+, K2s+, Q2s+, J4s+, T5s+, 96s+, 86s+, 75s+, T8o+, J8o+, Q8o+, K7o+, A2o+, 54s+, 64s+',
+  SB:  '22+, A2s+, K2s+, Q2s+, J4s+, T6s+, 96s+, 85s+, 75s+, 98o, T8o+, J9o+, Q9o+, K8o+, A3o+, 54s+, 64s+'
 };
+function expandRangeText(text) {
+  const out = new Set();
+  for (const tok of text.split(',').map(t => t.trim()).filter(Boolean)) {
+    const m = tok.match(/^([2-9TJQKA])([2-9TJQKA])s\+$/);
+    if (m && RI[m[2]] - RI[m[1]] === 1) {              // suited connector: slide the pair up
+      for (let i = RI[m[1]]; i >= 0; i--) out.add(RANKS[i] + RANKS[i + 1] + 's');
+    } else {
+      for (const h of expand([tok])) out.add(h);
+    }
+  }
+  return out;
+}
 const RFI_DATA = { gm: {}, pb3: {} };
 for (const p of HERO_POSITIONS) RFI_DATA.gm[p] = { open: RANGES[p], mixed: new Set() };
-for (const [p, r] of Object.entries(RFI_PB3_RAW)) {
-  const open = expand(r.open), mixed = expand(r.mixed);
-  assertDisjoint('RFI_PB3.' + p, { open, mixed });
-  // Only hands the book prints as a FULL open cell are opens. The `mixed` list holds
-  // the partially-coloured cells; they are folds here, both in grading and on the
-  // chart (kept in the raw data as documentation of what the book shows).
-  RFI_DATA.pb3[p] = { open, mixed: new Set() };
-}
+for (const [p, text] of Object.entries(RFI_PB3_TEXT)) RFI_DATA.pb3[p] = { open: expandRangeText(text), mixed: new Set() };
 
 // grid label at row i, col j (A=0 … 2=12): diagonal=pair, upper=suited, lower=offsuit
 function labelAt(i, j) {
@@ -2415,12 +2414,10 @@ MODES.rfi = {
              '(<span class="pct">' + rangePct(d.open) + '%</span>' +
              (d.mixed.size ? ' + ' + rangePct(d.mixed) + '% mixed' : '') + '). ' + POS_DESC[s.pos];
     }
-    if (prof === 'pb3') html += pb3FreqNote('open', s.pos, s.notation);
     return {
       correct, correctAction: ok[0],
       title, html,
-      matrix: (prof === 'pb3' && pb3FillMatrix('open', s.pos, s.notation,
-                 s.pos + ' open (PB3) · ' + rangePct(RFI_DATA.pb3[s.pos].open) + '%')) || {
+      matrix: {
         layers, hero: s.notation,
         title: s.pos + ' open (' + PROFILES[prof].short + ') · ' + rangePct(d.open) + '%' +
                (d.mixed.size ? ' + ' + rangePct(d.mixed) + '% mix' : '')
@@ -4650,25 +4647,16 @@ const FIVEBET_MATCHUPS = Object.keys(FIVEBET_RAW);
    prints as half call / half borderline shows — and grades — as a full call.
    Cells that carry nothing but borderline stay empty (= fold). */
 const PB3_FILL_COLORS = {
-  open:     { R: '#009999' },
   threebet: { R: '#9966ff' },
   fourbet:  { '4': '#33ccff', C: '#009999', F: '#4472c4' },
   fivebet:  { '5': '#33ccff', C: '#9966ff', F: '#4472c4' }
 };
 const PB3_FILL_LABELS = {
-  open:     { R: 'Open' },
   threebet: { R: '3-Bet' },
   fourbet:  { '4': '4-Bet', C: 'Call vs 3-Bet', F: 'Fold vs 3-Bet' },
   fivebet:  { '5': '5-Bet (all-in)', C: 'Call vs 4-Bet', F: 'Fold vs 4-Bet' }
 };
 const PB3_FILL_RAW = {
-  open: {
-  UTG: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:100 A8s=R:100 A7s=R:100 A6s=R:100 A5s=R:100 A4s=R:100 A3s=R:100 A2s=R:100 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:100 K9s=R:100 K8s=B:100 AQo=R:100 KQo=R:100 QQ=R:100 QJs=R:100 QTs=R:100 Q9s=B:100 AJo=R:100 KJo=B:100 JJ=R:100 JTs=R:100 J9s=B:100 ATo=B:100 TT=R:100 T9s=R:100 99=R:100 98s=R:100 88=R:100 87s=R:100 77=R:100 76s=R:100 66=R:100 65s=R:100 55=R:100 54s=R:50/B:48.6 44=R:100 33=R:21.7/B:76.8 22=B:100',
-  MP: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:100 A8s=R:100 A7s=R:100 A6s=R:100 A5s=R:100 A4s=R:100 A3s=R:100 A2s=R:100 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:100 K9s=R:100 K8s=R:100 K7s=B:100 K6s=B:100 K5s=B:100 AQo=R:100 KQo=R:100 QQ=R:100 QJs=R:100 QTs=R:100 Q9s=R:100 Q8s=B:100 AJo=R:100 KJo=R:100 QJo=R:100 JJ=R:100 JTs=R:100 J9s=R:100 J8s=B:100 ATo=R:100 KTo=B:100 QTo=B:100 TT=R:100 T9s=R:100 T8s=R:49.3/B:49.3 A9o=B:50 99=R:100 98s=R:100 97s=R:50/B:50 88=R:100 87s=R:100 86s=B:100 77=R:100 76s=R:100 66=R:100 65s=R:100 55=R:100 54s=R:100 44=R:100 33=R:49.3/B:49.3 22=B:100',
-  CO: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:100 A8s=R:100 A7s=R:100 A6s=R:100 A5s=R:100 A4s=R:100 A3s=R:100 A2s=R:100 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:100 K9s=R:100 K8s=R:100 K7s=R:100 K6s=R:100 K5s=R:100 K4s=B:100 K3s=B:100 AQo=R:100 KQo=R:100 QQ=R:100 QJs=R:100 QTs=R:100 Q9s=R:100 Q8s=R:100 Q7s=R:100 Q6s=B:100 Q5s=B:100 AJo=R:100 KJo=R:100 QJo=R:100 JJ=R:100 JTs=R:100 J9s=R:100 J8s=R:100 J7s=R:100 ATo=R:100 KTo=R:100 QTo=R:100 JTo=R:100 TT=R:100 T9s=R:100 T8s=R:100 T7s=B:100 A9o=R:100 99=R:100 98s=R:100 97s=R:100 A8o=B:100 88=R:100 87s=R:100 86s=R:100 A7o=B:50 77=R:100 76s=R:100 66=R:100 65s=R:100 A5o=B:100 55=R:100 54s=R:100 44=R:100 43s=B:100 33=R:100 22=R:100',
-  BTN: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:100 A8s=R:100 A7s=R:100 A6s=R:100 A5s=R:100 A4s=R:100 A3s=R:100 A2s=R:100 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:100 K9s=R:100 K8s=R:100 K7s=R:100 K6s=R:100 K5s=R:100 K4s=R:100 K3s=R:100 K2s=R:100 AQo=R:100 KQo=R:100 QQ=R:100 QJs=R:100 QTs=R:100 Q9s=R:100 Q8s=R:100 Q7s=R:100 Q6s=R:100 Q5s=R:100 Q4s=R:100 Q3s=R:100 Q2s=B:100 AJo=R:100 KJo=R:100 QJo=R:100 JJ=R:100 JTs=R:100 J9s=R:100 J8s=R:100 J7s=R:100 J6s=R:100 J5s=R:100 J4s=B:100 J3s=B:50 ATo=R:100 KTo=R:100 QTo=R:100 JTo=R:100 TT=R:100 T9s=R:100 T8s=R:100 T7s=R:100 T6s=R:100 T5s=B:100 A9o=R:100 K9o=R:100 Q9o=R:100 J9o=R:100 T9o=R:100 99=R:100 98s=R:100 97s=R:100 96s=R:100 95s=B:100 A8o=R:100 K8o=R:100 Q8o=B:100 J8o=R:48.5/B:50 T8o=R:48.5/B:50 98o=R:49.3/B:50.7 88=R:100 87s=R:100 86s=R:100 85s=B:100 84s=B:100 A7o=R:100 K7o=B:48.5 87o=B:48.5 77=R:100 76s=R:100 75s=R:100 74s=B:100 73s=B:50 A6o=R:100 66=R:100 65s=R:100 64s=R:100 63s=B:100 A5o=R:100 55=R:100 54s=R:100 53s=B:100 A4o=R:100 44=R:100 43s=B:100 A3o=R:100 33=R:100 A2o=B:100 22=R:100',
-  SB: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:100 A8s=R:100 A7s=R:100 A6s=R:100 A5s=R:100 A4s=R:100 A3s=R:100 A2s=R:100 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:100 K9s=R:100 K8s=R:100 K7s=R:100 K6s=R:100 K5s=R:100 K4s=R:100 K3s=R:100 K2s=R:100 AQo=R:100 KQo=R:100 QQ=R:100 QJs=R:100 QTs=R:100 Q9s=R:100 Q8s=R:100 Q7s=R:100 Q6s=R:100 Q5s=R:100 Q4s=R:100 Q3s=R:100 Q2s=R:100 AJo=R:100 KJo=R:100 QJo=R:100 JJ=R:100 JTs=R:100 J9s=R:100 J8s=R:100 J7s=R:100 J6s=R:100 J5s=R:100 J4s=R:100 J3s=B:100 J2s=B:100 ATo=R:100 KTo=R:100 QTo=R:100 JTo=R:100 TT=R:100 T9s=R:100 T8s=R:100 T7s=R:100 T6s=R:100 T5s=B:100 T4s=B:100 T3s=B:100 A9o=R:100 K9o=R:100 Q9o=R:100 J9o=R:100 T9o=R:100 99=R:100 98s=R:100 97s=R:100 96s=R:100 95s=B:100 94s=B:100 93s=B:100 A8o=R:100 K8o=R:100 Q8o=B:100 J8o=R:100 T8o=R:100 98o=R:100 88=R:100 87s=R:100 86s=R:100 85s=R:100 84s=B:100 83s=B:100 A7o=R:100 K7o=B:100 Q7o=B:50 J7o=B:49.3 T7o=B:50.7 97o=B:50 87o=B:100 77=R:100 76s=R:100 75s=R:100 74s=R:100 73s=B:100 A6o=R:100 86o=B:49.3 76o=B:100 66=R:100 65s=R:100 64s=R:100 63s=B:100 62s=B:22.9 A5o=R:100 55=R:100 54s=R:100 53s=R:100 52s=B:50 A4o=R:100 44=R:100 43s=B:100 42s=B:50 A3o=B:100 33=R:100 32s=B:50 A2o=B:100 22=R:100',
-  },
   threebet: {
   MP_vs_UTG: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:27.1/B:27.1 A8s=R:15.9/B:20.3 A5s=R:92.9 A4s=R:85.7/B:11.4 A3s=B:28.6 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:98.6 K9s=B:21.4 AQo=R:100 KQo=R:51.4/B:47.1 QQ=R:100 QJs=R:78.6/B:20 QTs=B:25.7 JJ=R:100 JTs=R:14.3/B:27.1 TT=R:100 99=R:32.9/B:25.7 88=R:21.7/B:27.5 87s=R:15.7 77=R:10 76s=R:21.4 66=R:10 65s=R:27.1 54s=R:27.1',
   CO_vs_UTG: 'AA=R:100 AKs=R:100 AQs=R:100 AJs=R:100 ATs=R:100 A9s=R:27.1/B:27.1 A8s=R:15.9 A5s=R:92.9 A4s=R:85.7/B:11.4 A3s=B:28.6 AKo=R:100 KK=R:100 KQs=R:100 KJs=R:100 KTs=R:98.6 K9s=B:15.7 AQo=R:100 KQo=R:71.4/B:27.1 QQ=R:100 QJs=R:100 QTs=B:25.7 JJ=R:100 JTs=R:14.3/B:27.1 TT=R:100 99=R:54.3/B:42.9 88=R:21.7/B:27.5 87s=R:15.7 77=R:21.4/B:15.7 76s=R:15.7 66=R:21.4 65s=R:27.1 54s=R:27.1',
@@ -4696,7 +4684,7 @@ const PB3_FILL_RAW = {
   },
   fivebet: FIVEBET_RAW
 };
-function parsePb3Fills(spec, colors, fullOnly) {
+function parsePb3Fills(spec, colors) {
   const out = {};
   for (const tok of spec.trim().split(/\s+/)) {
     const eq = tok.indexOf('=');
@@ -4710,9 +4698,6 @@ function parsePb3Fills(spec, colors, fullOnly) {
       if (colors[k]) parts.push({ k, pct: v, color: colors[k] });
     }
     const real = parts.reduce((n, p) => n + p.pct, 0);
-    // RFI charts: only a cell the book fills completely is an open. Anything partial
-    // (mixed-frequency) is a fold and keeps no fill at all.
-    if (fullOnly) { if (real >= 97) out[note] = parts; continue; }
     // Elsewhere borderline is not a separate action: hand its mass to the cell's real
     // action(s), pro rata. Half-call/half-borderline therefore paints (and grades)
     // as a full call; a cell holding only borderline keeps no parts at all.
@@ -4726,7 +4711,7 @@ const PB3_FILLS = (() => {
   for (const sec of Object.keys(PB3_FILL_RAW)) {
     out[sec] = {};
     for (const [key, spec] of Object.entries(PB3_FILL_RAW[sec])) {
-      out[sec][key] = parsePb3Fills(spec, PB3_FILL_COLORS[sec], sec === 'open');
+      out[sec][key] = parsePb3Fills(spec, PB3_FILL_COLORS[sec]);
     }
   }
   return out;
@@ -4734,7 +4719,6 @@ const PB3_FILLS = (() => {
 const pb3Legend = sec => Object.keys(PB3_FILL_COLORS[sec])
   .map(k => ({ label: PB3_FILL_LABELS[sec][k], color: PB3_FILL_COLORS[sec][k] }));
 // combo counts as printed in the book, for the chart caption
-const PB3_BOOK_OPEN = { UTG: 213.5, MP: 269, CO: 362, BTN: 568, SB: 594 };
 const PB3_BOOK_3BET = { MP_vs_UTG:107.8, CO_vs_UTG:113.4, CO_vs_MP:125.3, BTN_vs_UTG:127.3,
   BTN_vs_MP:147.7, BTN_vs_CO:196.2, SB_vs_EP:116.3, SB_vs_CO:134.2, SB_vs_BTN:201.2,
   BB_vs_EP:88.7, BB_vs_CO:131.5, BB_vs_BTN:193.8, BB_vs_SB:256.8 };
@@ -4743,7 +4727,7 @@ const PB3_BOOK_4BET = { UTG_OOP:[48.5,75.5,89.5], UTG_vs_blinds:[22,104.5,87],
   CO_vs_blinds:[45.7,148.2,168.1], BTN_vs_blinds:[66.2,211.2,290.6], SB_vs_BB:[103.6,209.8,280.6] };
 // the vs-Open drill splits UTG and MP, the book charts them together for the blinds
 const pb3ThreeBetKey = k => k.replace(/^(SB|BB)_vs_(UTG|MP)$/, '$1_vs_EP');
-const PB3_REST_LABEL = { open: 'Fold', threebet: 'Fold / Call', fourbet: 'kein Open', fivebet: 'kein 3-Bet' };
+const PB3_REST_LABEL = { threebet: 'Fold / Call', fourbet: 'kein Open', fivebet: 'kein 3-Bet' };
 // feedback-matrix drawn book-faithfully (proportional split cells) with the
 // played hand outlined — same look as the range viewer. Returns null when there
 // is no chart art for that spot so the caller can fall back to the plain layers.
@@ -4794,12 +4778,6 @@ const VIEWS = {
     label: 'Open (RFI)', profiled: true, keyLabel: 'Position',
     keys: () => HERO_POSITIONS.map(p => ({ key: p, label: p })),
     matrix: (prof, key) => {
-      // PB3 renders the book chart itself (exact splits); GM has no chart art
-      if (prof === 'pb3' && PB3_FILLS.open[key]) {
-        return { layers: [], fills: PB3_FILLS.open[key], hero: null, restLabel: 'Fold',
-          legend: pb3Legend('open'),
-          title: key + ' open (PB3) · ' + rangePct(RFI_DATA.pb3[key].open) + '% · nur volle Zellen' };
-      }
       const d = RFI_DATA[prof][key];
       const layers = [{ set: d.open, css: 'in', label: 'Open' }];
       if (d.mixed.size) layers.push({ set: d.mixed, css: 'in-mix', label: 'Mixed' });
