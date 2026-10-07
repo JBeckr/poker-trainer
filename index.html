@@ -1490,7 +1490,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.33.2';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.34.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2607,6 +2607,11 @@ const VS_OPEN_PB3_USER = {
     bluff:    '',
     callfold: 'Q5s',
     call:     'KQo, AQo, AJo, KJo, QJo, ATo, A9o, KTo, QTo, JTo, TT, 99, 88, 77, 66, 55, 44, 33, 22, 43s, 53s, 64s, 75s, 85s, 86s, 96s, 97s, 98s, T7s, J8s, J7s, KTs, K9s, K8s, K7s, K6s, K5s, K4s, K3s, K2s, Q7s, Q4s, A7s, A8s, A9s, ATs, AJs' },
+  BB_vs_BTN: {
+    raise:    'AA, KK, QQ, JJ, AKs, AQs, KQs, AKo, QJs, JTs, Q9s, J9s, T9s',
+    mix:      'AJs, AQo, K6s, Q8s, J8s, T8s, T6s, 87s, 76s, 65s, 54s, A5s, A4s',
+    callfold: 'J3s',
+    call:     'KQo, AJo, KJo, QJo, ATo, A9o, A8o, A7o, A5o, A4o, K9o, Q9o, J9o, T9o, KTo, QTo, JTo, TT, 99, 88, 77, 66, 55, 44, 33, 22, 43s, 53s, 64s, 75s, 85s, 86s, 96s, 97s, 98s, T7s, J7s, J5s, J4s, 74s, 63s, 52s, KJs, KTs, K9s, K8s, K7s, K5s, K4s, K3s, K2s, QTs, Q7s, Q6s, Q5s, Q4s, Q3s, Q2s, A6s, A7s, A8s, A9s, ATs, A3s, A2s' },
   BB_vs_UTG: {
     raise: 'AA, KK, AKs, KQs',
     bluff: '',
