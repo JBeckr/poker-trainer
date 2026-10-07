@@ -1486,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.21.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.22.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2567,7 +2567,8 @@ const VS_OPEN = VS_OPEN_DATA.gm;   // GM remains the reference set
    and is drawn as a plain layer chart instead of the book's fill chart. */
 const VS_OPEN_PB3_USER = {
   MP_vs_UTG: { raise: '99+, QJs, KJs, KTs, KQs, AQs, AKs, AJs, ATs, AKo, A5s, A4s', call: '', mix: '' },
-  CO_vs_UTG: { raise: '99+, AQs+, KTs+, QJs, AQo+, A8s, A7s, A5s, A4s', call: '', mix: 'KQs, AJs, ATs' }
+  CO_vs_UTG: { raise: '99+, AQs+, KTs+, QJs, AQo+, A8s, A7s, A5s, A4s', call: '', mix: 'KQs, AJs, ATs' },
+  BTN_vs_UTG: { raise: 'AKs, QQ+, AKo, KQo, QTs, QJs, KTs, A4s, A3s', call: '', mix: 'AQo, AQs, AJs, ATs, JJ, TT, 99, 88, 77' }
 };
 for (const [key, r] of Object.entries(VS_OPEN_PB3_USER)) {
   const value = expandRangeText(r.raise), call = expandRangeText(r.call), dual = expandRangeText(r.mix);
