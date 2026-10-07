@@ -1486,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.19.3';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.20.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2329,6 +2329,10 @@ function chartBorderline(modeId, key, prof) {
       // PB3's vs-open data has no dual/bluff/callMixed sets (it was derived from the
       // book charts). Take the borderline hands from the same source instead:
       const ck = pb3ThreeBetKey(key);
+      if (VS_OPEN_PB3_USER[key]) {                              // user-supplied ranges: the range edge
+        const e = VS_OPEN_DATA.pb3[key];
+        return [...new Set([...frontierOf(new Set([...e.threeBet, ...e.call])), ...e.dual])];
+      }
       if (BLINDDEF[ck]) return [...BLINDDEF[ck].border];       // SB/BB defense matchups
       const fills = PB3_FILLS.threebet[ck];                    // MP/CO/BTN 3-bet-or-fold matchups
       if (fills) {
@@ -2556,6 +2560,34 @@ const VS_OPEN_DATA = {
   pb3: buildVsOpen(VS_OPEN_PB3_RAW, false)
 };
 const VS_OPEN = VS_OPEN_DATA.gm;   // GM remains the reference set
+
+/* vs Open (PB3) ranges supplied directly by the user, in the same range notation as
+   the RFI lists. raise = 3-bet, call = flat, mix = either action is correct; anything
+   unlisted is a fold. A matchup listed here replaces the scan-derived data entirely
+   and is drawn as a plain layer chart instead of the book's fill chart. */
+const VS_OPEN_PB3_USER = {
+  MP_vs_UTG: { raise: '99+, QJs, KJs, KTs, KQs, AQs, AKs, AJs, ATs, AKo, A5s, A4s', call: '', mix: '' }
+};
+for (const [key, r] of Object.entries(VS_OPEN_PB3_USER)) {
+  const value = expandRangeText(r.raise), call = expandRangeText(r.call), dual = expandRangeText(r.mix);
+  for (const h of dual) { value.delete(h); call.delete(h); }
+  assertDisjoint('VS_OPEN_PB3_USER.' + key, { value, call, dual });
+  VS_OPEN_DATA.pb3[key] = { value, bluff: new Set(), dual, call, callMixed: new Set(),
+    style: 'linear', bluffStrict: false, threeBet: new Set([...value, ...dual]) };
+}
+// hands on the edge of a range: in/out cells that touch an opposite cell on the grid
+function frontierOf(inSet) {
+  const isIn = (i, j) => inSet.has(labelAt(i, j));
+  const out = new Set();
+  for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) {
+    const here = isIn(i, j);
+    for (const [a, b] of [[i-1,j],[i+1,j],[i,j-1],[i,j+1]]) {
+      if (a < 0 || a > 12 || b < 0 || b > 12) continue;
+      if (isIn(a, b) !== here) { out.add(labelAt(i, j)); break; }
+    }
+  }
+  return [...out];
+}
 const VS_OPEN_MATCHUPS = Object.keys(VS_OPEN);
 // acceptable actions for a hand under an entry
 function vsOpenActions(entry, n) {
@@ -2656,11 +2688,12 @@ MODES.vsopen = {
     // blind-defense matchups carry a real flatting range → show the green call
     // chart (vsOpenLayers), not the polarized 3-bet-section fill chart
     const bdKey = prof === 'pb3' ? PB3_VO_TO_BLINDDEF[s.matchup] : null;
-    if (prof === 'pb3' && !bdKey) html += pb3FreqNote('threebet', pb3ThreeBetKey(s.matchup), s.notation);
+    const fillChart = prof === 'pb3' && !bdKey && !VS_OPEN_PB3_USER[s.matchup];   // book fill chart only where no user ranges exist
+    if (fillChart) html += pb3FreqNote('threebet', pb3ThreeBetKey(s.matchup), s.notation);
     return {
       correct, correctAction: primary,
       title, html,
-      matrix: (prof === 'pb3' && !bdKey && pb3FillMatrix('threebet', pb3ThreeBetKey(s.matchup), s.notation,
+      matrix: (fillChart && pb3FillMatrix('threebet', pb3ThreeBetKey(s.matchup), s.notation,
                  s.matchup.replace('_vs_', ' vs ') + ' (PB3) · 3-bet ' +
                  PB3_BOOK_3BET[pb3ThreeBetKey(s.matchup)] + ' combos')) || {
         layers, hero: s.notation,
@@ -2681,14 +2714,14 @@ function vsOpenLayers(entry) {
   const layers = [{ set: entry.value, css: 'in-raise', label: '3-bet' }];
   if (entry.dual.size)      layers.push({ set: entry.dual,      css: 'in-dual',    label: '3-bet/call' });
   if (entry.bluff.size)     layers.push({ set: entry.bluff,     css: entry.bluffStrict ? 'in-raise' : 'in-bluffmix', label: entry.bluffStrict ? '3-bet' : '3-bet/fold' });
-  layers.push({ set: entry.call, css: 'in-call', label: 'Call' });
+  if (entry.call.size) layers.push({ set: entry.call, css: 'in-call', label: 'Call' });
   if (entry.callMixed.size) layers.push({ set: entry.callMixed, css: 'in-callmix', label: 'Call/fold' });
   return layers;
 }
 function vsOpenReasonProfiled(entry, notation, ok, prof) {
   if (prof === 'gm') return vsOpenReason(entry, notation, ok[0]);
   // PB3: mixed-frequency vocabulary
-  if (entry.value.has(notation)) return '<b>3-bet</b> — standard value/pressure hand in the Preflop Bible chart.';
+  if (entry.value.has(notation)) return '<b>3-bet</b> — part of the 3-bet range.';
   if (entry.bluff.has(notation)) return '<b>3-bet or fold</b> — a borderline mixed hand: 3-bet it versus players who over-fold, otherwise let it go.';
   if (entry.dual.has(notation)) return '<b>3-bet or call</b> — the solver splits this hand between 3-betting and flatting; either is fine.';
   if (entry.callMixed.has(notation)) return '<b>call or fold</b> — a marginal defend that the solver mixes near the folding threshold.';
@@ -4793,7 +4826,7 @@ const VIEWS = {
       // non-blind matchups: the book's polarized 3-bet fill chart. Blind-defense
       // matchups (BB/SB vs opener) carry a real flatting range, so they fall through
       // to the layer chart below which paints the green Call range.
-      if (prof === 'pb3' && !PB3_VO_TO_BLINDDEF[key]) {
+      if (prof === 'pb3' && !PB3_VO_TO_BLINDDEF[key] && !VS_OPEN_PB3_USER[key]) {
         const ck = pb3ThreeBetKey(key);
         if (PB3_FILLS.threebet[ck]) {
           return { layers: [], fills: PB3_FILLS.threebet[ck], hero: null, restLabel: 'Fold / Call',
