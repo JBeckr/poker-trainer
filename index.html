@@ -35,6 +35,9 @@
     --blue-dark: #1f6fb8;
     --line: #1e2a3c;
     --line-2: #2a3a50;
+    --act-raise: #f03c3c;     /* raise / 3-bet / open */
+    --act-call: #5ab966;      /* call */
+    --act-fold: #3d7cb8;      /* fold */
     --mono: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Consolas, Menlo, monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -720,10 +723,10 @@
   .btn-action:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-2px); }
   .btn-action:active:not(:disabled) { transform: translateY(0); }
   .btn-action:disabled { opacity: 0.35; cursor: default; }
-  .btn-fold  { background: linear-gradient(180deg, var(--red), var(--red-dark)); }
-  .btn-raise { background: linear-gradient(180deg, var(--green), var(--green-dark)); }
-  .btn-call  { background: linear-gradient(180deg, var(--blue), var(--blue-dark)); }
-  .btn-3bet  { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: #052414; }
+  .btn-fold  { background: var(--act-fold); }
+  .btn-raise { background: var(--act-raise); }
+  .btn-call  { background: var(--act-call); }
+  .btn-3bet  { background: var(--act-raise); }
   .btn-chip  {
     background: linear-gradient(180deg, #1b2740, #182234);
     font-size: 0.95rem;
@@ -856,8 +859,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 3px;
-    background: #182234;
-    color: #9aabbe;                    /* readable on the empty cell colour */
+    background: var(--act-fold);       /* an unlisted hand is a fold */
+    color: #fff;
+    text-shadow: 0 0 3px rgba(0,0,0,0.6);
     font-weight: 700;
     letter-spacing: -0.2px;
     user-select: none;
@@ -869,14 +873,14 @@
     color: #fff;
     text-shadow: 0 0 3px rgba(0,0,0,0.95), 0 1px 2px rgba(0,0,0,0.9);
   }
-  .cell.in       { background: var(--green-dark); }
-  .cell.in-raise { background: var(--gold-dark);  }
-  .cell.in-call  { background: var(--blue-dark);  }
+  .cell.in       { background: var(--act-raise); }
+  .cell.in-raise { background: var(--act-raise); }
+  .cell.in-call  { background: var(--act-call);  }
   /* split cells read as vertical bands everywhere, like the book's own charts */
-  .cell.in-mix     { background: linear-gradient(90deg, var(--green-dark) 50%, #182234 50%); }
-  .cell.in-dual    { background: linear-gradient(90deg, var(--gold-dark) 50%, var(--blue-dark) 50%); }
-  .cell.in-bluffmix{ background: linear-gradient(90deg, var(--gold-dark) 50%, #182234 50%); }
-  .cell.in-callmix { background: linear-gradient(90deg, var(--blue-dark) 50%, #182234 50%); }
+  .cell.in-mix     { background: linear-gradient(90deg, var(--act-raise) 50%, var(--act-fold) 50%); }
+  .cell.in-dual    { background: linear-gradient(90deg, var(--act-raise) 50%, var(--act-call) 50%); }
+  .cell.in-bluffmix{ background: linear-gradient(90deg, var(--act-raise) 50%, var(--act-fold) 50%); }
+  .cell.in-callmix { background: linear-gradient(90deg, var(--act-call) 50%, var(--act-fold) 50%); }
   .cell.in-skip    { background: repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px); color: #b0bccb; }
   .cell.hero-cell {
     outline: 3px solid #ffffff;
@@ -1486,7 +1490,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.31.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.32.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1747,7 +1751,7 @@ function paintLegend(legEl, m) {
   const base = m.legend
     ? m.legend.map(l => ({ label: l.label, style: 'background:' + l.color }))
     : m.layers.map(l => ({ label: l.label, style: 'background:' + cssVarOf(l.css) }));
-  const items = base.concat([{ label: m.restLabel || 'Fold', style: 'background:#182234' }]);
+  const items = base.concat([{ label: m.restLabel || 'Fold', style: 'background:' + (m.fills ? '#182234' : 'var(--act-fold)') }]);
   if (m.hero) items.push({ label: 'Your hand', style: 'background:none;outline:2px solid var(--gold);outline-offset:-1px' });
   for (const it of items) {
     const s = document.createElement('span');
@@ -1765,13 +1769,13 @@ function renderMatrixPanel(m) {
 }
 function cssVarOf(cls) {
   const map = {
-    'in': 'var(--green-dark)',
-    'in-raise': 'var(--gold-dark)',
-    'in-call': 'var(--blue-dark)',
-    'in-mix': 'linear-gradient(90deg, var(--green-dark) 50%, #182234 50%)',
-    'in-dual': 'linear-gradient(90deg, var(--gold-dark) 50%, var(--blue-dark) 50%)',
-    'in-bluffmix': 'linear-gradient(90deg, var(--gold-dark) 50%, #182234 50%)',
-    'in-callmix': 'linear-gradient(90deg, var(--blue-dark) 50%, #182234 50%)',
+    'in': 'var(--act-raise)',
+    'in-raise': 'var(--act-raise)',
+    'in-call': 'var(--act-call)',
+    'in-mix': 'linear-gradient(90deg, var(--act-raise) 50%, var(--act-fold) 50%)',
+    'in-dual': 'linear-gradient(90deg, var(--act-raise) 50%, var(--act-call) 50%)',
+    'in-bluffmix': 'linear-gradient(90deg, var(--act-raise) 50%, var(--act-fold) 50%)',
+    'in-callmix': 'linear-gradient(90deg, var(--act-call) 50%, var(--act-fold) 50%)',
     'in-skip': 'repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px)'
   };
   return map[cls] || '#182234';
@@ -3941,8 +3945,8 @@ for (const [key, raw] of Object.entries(BLINDDEF_RAW)) {
     if (Math.min(three, call) / sum >= 0.33) {
       mix.add(lb); border.add(lb);
       // keep the real ratio so the chart can draw the cell as the book prints it
-      mixSplit[lb] = [{ pct: three / sum * 100, color: 'var(--gold-dark)' },
-                      { pct: call  / sum * 100, color: 'var(--blue-dark)' }];
+      mixSplit[lb] = [{ pct: three / sum * 100, color: 'var(--act-raise)' },
+                      { pct: call  / sum * 100, color: 'var(--act-call)' }];
     }
     if (three >= call) { act[lb] = 'raise'; L.raise.add(lb); }
     else { act[lb] = 'call'; L.call.add(lb); }
@@ -4720,9 +4724,9 @@ const FIVEBET_MATCHUPS = Object.keys(FIVEBET_RAW);
    prints as half call / half borderline shows — and grades — as a full call.
    Cells that carry nothing but borderline stay empty (= fold). */
 const PB3_FILL_COLORS = {
-  threebet: { R: '#9966ff' },
-  fourbet:  { '4': '#33ccff', C: '#009999', F: '#4472c4' },
-  fivebet:  { '5': '#33ccff', C: '#9966ff', F: '#4472c4' }
+  threebet: { R: '#f03c3c' },
+  fourbet:  { '4': '#f03c3c', C: '#5ab966', F: '#3d7cb8' },
+  fivebet:  { '5': '#f03c3c', C: '#5ab966', F: '#3d7cb8' }
 };
 const PB3_FILL_LABELS = {
   threebet: { R: '3-Bet' },
