@@ -1486,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.23.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.24.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2331,7 +2331,7 @@ function chartBorderline(modeId, key, prof) {
       const ck = pb3ThreeBetKey(key);
       if (VS_OPEN_PB3_USER[key]) {                              // user-supplied ranges: the range edge
         const e = VS_OPEN_DATA.pb3[key];
-        return [...new Set([...frontierOf(new Set([...e.threeBet, ...e.call])), ...e.dual])];
+        return [...new Set([...frontierOf(new Set([...e.threeBet, ...e.call])), ...e.dual, ...e.bluff])];
       }
       if (BLINDDEF[ck]) return [...BLINDDEF[ck].border];       // SB/BB defense matchups
       const fills = PB3_FILLS.threebet[ck];                    // MP/CO/BTN 3-bet-or-fold matchups
@@ -2569,14 +2569,22 @@ const VS_OPEN_PB3_USER = {
   MP_vs_UTG: { raise: '99+, QJs, KJs, KTs, KQs, AQs, AKs, AJs, ATs, AKo, A5s, A4s', call: '', mix: '' },
   CO_vs_UTG: { raise: '99+, AQs+, KTs+, QJs, AQo+, A8s, A7s, A5s, A4s', call: '', mix: 'KQs, AJs, ATs' },
   BTN_vs_UTG: { raise: 'AKs, QQ+, AKo, KQo, QTs, QJs, KTs, A4s, A3s', call: '', mix: 'AQo, AQs, AJs, ATs, JJ, TT, 99, 88, 77, KQs, KJs, JTs, A5s, A9s' },
-  SB_vs_UTG: { raise: 'AKs, QQ+, AKo, KQs, KTs, QJs, A4s', call: '', mix: 'AQo, AQs, AJs, ATs, JJ, TT, 99, 88, 77, KJs, JTs, A5s' }
+  SB_vs_UTG: { raise: 'AKs, QQ+, AKo, KQs, KTs, QJs, A4s', call: '', mix: 'AQo, AQs, AJs, ATs, JJ, TT, 99, 88, 77, KJs, JTs, A5s' },
+  BB_vs_UTG: {
+    raise: 'AA, KK, AKs, KQs',
+    bluff: 'AKo, QQ, QJs, A6s, A5s, A4s, A3s, 54s, 65s, 76s',
+    mix:   'KJs, KTs',
+    call:  'KQo, AQo, AJo, KJo, ATo, JJ, TT, 99, 88, 77, 66, 55, 44, 33, 22, 43s, 53s, 64s, 75s, 86s, 97s, T8s, T9s, J9s, Q9s, QTs, JTs, 98s, 87s, K7s, K8s, K9s, A2s, A7s, A8s, A9s, ATs, AJs, AQs' }
 };
 for (const [key, r] of Object.entries(VS_OPEN_PB3_USER)) {
+  // raise = pure 3-bet · mix = 3-bet or call · bluff = 3-bet or fold · call = pure call
   const value = expandRangeText(r.raise), call = expandRangeText(r.call), dual = expandRangeText(r.mix);
-  for (const h of dual) { value.delete(h); call.delete(h); }
-  assertDisjoint('VS_OPEN_PB3_USER.' + key, { value, call, dual });
-  VS_OPEN_DATA.pb3[key] = { value, bluff: new Set(), dual, call, callMixed: new Set(),
-    style: 'linear', bluffStrict: false, threeBet: new Set([...value, ...dual]) };
+  const bluff = expandRangeText(r.bluff || '');
+  for (const h of [...dual, ...bluff]) { value.delete(h); call.delete(h); }
+  for (const h of dual) bluff.delete(h);
+  assertDisjoint('VS_OPEN_PB3_USER.' + key, { value, call, dual, bluff });
+  VS_OPEN_DATA.pb3[key] = { value, bluff, dual, call, callMixed: new Set(),
+    style: 'linear', bluffStrict: false, threeBet: new Set([...value, ...dual, ...bluff]) };
 }
 // hands on the edge of a range: in/out cells that touch an opposite cell on the grid
 function frontierOf(inSet) {
