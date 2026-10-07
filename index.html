@@ -1490,7 +1490,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.35.2';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.35.3';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -4905,19 +4905,6 @@ const VIEWS = {
         title: key.replace('_vs_', ' vs ') + ' (' + PROFILES[prof].short + ') · 3-bet ' + pct3 + '% / call ' + pctC + '%' };
     }
   },
-  iso: {
-    label: 'ISO (vs limper)', profiled: false, groupLabel: 'Hero', keyLabel: 'Limper-Typ',
-    groups: () => ISO_HERO_POS.map(p => ({ id: p, label: p, keys: [
-      { key: p + '|fish', label: 'vs fish' }, { key: p + '|station', label: 'vs station' }] })),
-    matrix: (prof, key) => {
-      const [pos, profile] = key.split('|');
-      const r = ISO_RANGES[profile][pos];
-      const layers = [{ set: r.iso, css: 'in', label: 'ISO' }];
-      if (r.limp.size) layers.push({ set: r.limp, css: 'in-call', label: 'Limp behind' });
-      return { layers, hero: null, restLabel: pos === 'BB' ? 'Check' : 'Fold',
-        title: pos + ' vs ' + profile + ' limper · iso ' + rangePct(r.iso) + '%' };
-    }
-  },
   vs3bet: {
     label: 'vs 3-Bet (PB3)', profiled: false, groupLabel: 'Opener', keyLabel: '3-Better',
     groups: () => {
@@ -4948,19 +4935,6 @@ const VIEWS = {
                ' · 5-bet ' + bk[0] + ' / call ' + bk[1] + ' / fold ' + bk[2] + ' combos' };
     }
   },
-  blinddef: {
-    label: 'Blind Def (PB3)', profiled: false, groupLabel: 'Hero', keyLabel: 'vs Opener',
-    groups: () => groupMatchupsByHero(Object.keys(BLINDDEF), ['SB', 'BB']),
-    // Always the blind-defense chart itself (3-bet AND the flatting range) — the
-    // 3-bet-section fill chart would hide the calls this whole mode is about.
-    matrix: (prof, key) => {
-      const e = BLINDDEF[key];
-      const raiseSet = new Set(), callSet = new Set();
-      for (const [h, a] of Object.entries(e.act)) (a === 'raise' ? raiseSet : callSet).add(h);
-      return { layers: e.layers, splits: e.mixSplit, hero: null, restLabel: 'Fold',
-        title: e.label + ' · 3-bet ' + rangePct(raiseSet) + '% / call ' + rangePct(callSet) + '%' };
-    }
-  }
 };
 let viewerState = { view: 'rfi', profile: 'gm', key: 'UTG' };
 
