@@ -1486,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.30.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.31.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2592,6 +2592,11 @@ const VS_OPEN_PB3_USER = {
     bluff: 'KJo',
     mix:   'ATs, A9s, A8s, 55',
     call:  '' },
+  BB_vs_MP: {
+    raise:    'AA, KK, QQ, AKs, KQs',
+    mix:      'KJs, KTs, AKo, QJs, QTs, Q9s, Q8s, JTs, T8s, 87s, 76s, 65s, 54s, A5s, A4s, A3s, A2s',
+    callfold: 'JTo',
+    call:     'KQo, AQo, AJo, KJo, QJo, ATo, JJ, TT, 99, 88, 77, 66, 55, 44, 33, 22, 43s, 53s, 64s, 75s, 86s, 97s, 98s, T9s, T7s, J9s, J8s, K9s, K8s, K7s, K6s, K5s, K4s, A6s, A7s, A8s, A9s, ATs, AJs, AQs' },
   BB_vs_UTG: {
     raise: 'AA, KK, AKs, KQs',
     bluff: '',
@@ -2601,11 +2606,12 @@ const VS_OPEN_PB3_USER = {
 for (const [key, r] of Object.entries(VS_OPEN_PB3_USER)) {
   // raise = pure 3-bet · mix = 3-bet or call · bluff = 3-bet or fold · call = pure call
   const value = expandRangeText(r.raise), call = expandRangeText(r.call), dual = expandRangeText(r.mix);
-  const bluff = expandRangeText(r.bluff || '');
-  for (const h of [...dual, ...bluff]) { value.delete(h); call.delete(h); }
-  for (const h of dual) bluff.delete(h);
-  assertDisjoint('VS_OPEN_PB3_USER.' + key, { value, call, dual, bluff });
-  VS_OPEN_DATA.pb3[key] = { value, bluff, dual, call, callMixed: new Set(),
+  const bluff = expandRangeText(r.bluff || ''), callMixed = expandRangeText(r.callfold || '');   // callfold = call or fold
+  for (const h of [...dual, ...bluff, ...callMixed]) { value.delete(h); call.delete(h); }
+  for (const h of [...dual, ...callMixed]) bluff.delete(h);
+  for (const h of callMixed) dual.delete(h);
+  assertDisjoint('VS_OPEN_PB3_USER.' + key, { value, call, dual, bluff, callMixed });
+  VS_OPEN_DATA.pb3[key] = { value, bluff, dual, call, callMixed,
     style: 'linear', bluffStrict: false, threeBet: new Set([...value, ...dual, ...bluff]) };
 }
 // hands on the edge of a range: in/out cells that touch an opposite cell on the grid
