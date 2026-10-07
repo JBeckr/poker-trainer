@@ -1486,7 +1486,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.27.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.27.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -2577,7 +2577,7 @@ const VS_OPEN_PB3_USER = {
     call:  '' },
   BTN_vs_CO: {
     raise: 'AKs, AQs, QQ+, AKo, KQo, QTs, QJs, K9s, Q9s, AJo, A8s, A7s, A6s, A4s, A3s, A2s',
-    bluff: '65s, 54s, T9s, KJo, QJo',
+    bluff: '65s, 54s, T9s, KJo, QJo, 66',
     mix:   'AQo, AJs, ATs, JJ, TT, 99, 88, 77, KQs, KJs, KTs, JTs, A5s, A9s',
     call:  '' },
   SB_vs_UTG: { raise: 'AKs, QQ+, AKo, KQs, KTs, QJs, A4s', call: '', mix: 'AQo, AQs, AJs, ATs, JJ, TT, 99, 88, 77, KJs, JTs, A5s' },
