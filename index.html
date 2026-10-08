@@ -1533,7 +1533,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.36.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.36.1';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -5633,14 +5633,18 @@ function paintStyleCell(el, h) {
    
     (paintState.result && paintState.result.wrong.has(h) ? ' wrong' : '');
 }
-function paintAt(clientX, clientY) {
+// first = the pointer just went down: if that cell already carries the current brush, the
+// whole stroke erases (toggle), otherwise it paints. Fold is always the eraser.
+function paintAt(clientX, clientY, first) {
   if (paintState.checked) return;
   const el = document.elementFromPoint(clientX, clientY);
   if (!el || !el.dataset || !el.dataset.h || !el.closest('#paint-matrix')) return;
-  const h = el.dataset.h;
+  const h = el.dataset.h, b = paintState.brush;
+  if (first) paintState.erasing = (b === 'fold') || paintState.cells[h] === b;
   if (paintState.last === h) return;
   paintState.last = h;
-  if (paintState.brush === 'fold') delete paintState.cells[h]; else paintState.cells[h] = paintState.brush;
+  if (paintState.erasing) { if (b === 'fold' || paintState.cells[h] === b) delete paintState.cells[h]; }
+  else paintState.cells[h] = b;
   paintStyleCell(el, h);
 }
 function renderPaint() {
@@ -5687,7 +5691,7 @@ function renderPaint() {
     const c = document.createElement('div'); c.dataset.h = h; c.textContent = h;
     paintStyleCell(c, h); grid.appendChild(c);
   }
-  grid.addEventListener('pointerdown', e => { e.preventDefault(); s.down = true; s.last = null; paintAt(e.clientX, e.clientY); });
+  grid.addEventListener('pointerdown', e => { e.preventDefault(); s.down = true; s.last = null; paintAt(e.clientX, e.clientY, true); });
   grid.addEventListener('pointermove', e => { if (s.down) paintAt(e.clientX, e.clientY); });
   card.appendChild(grid);
   // result + actions
