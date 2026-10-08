@@ -882,6 +882,42 @@
   .cell.in-bluffmix{ background: linear-gradient(90deg, var(--act-raise) 50%, var(--act-fold) 50%); }
   .cell.in-callmix { background: linear-gradient(90deg, var(--act-call) 50%, var(--act-fold) 50%); }
   .cell.in-skip    { background: repeating-linear-gradient(45deg, #2a3a50 0 3px, #262c38 3px 6px); color: #b0bccb; }
+  /* ---------- Range malen (paint a range from memory) ---------- */
+  #paint-panel { display: none; width: 100%; max-width: 860px; margin: 0 auto 14px; }
+  body.paint-mode #paint-panel { display: block; }
+  body.paint-mode .table-wrap, body.paint-mode #feedback,
+  body.paint-mode .pos-stats, body.paint-mode #settings-bar { display: none !important; }
+  .pp-card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .pp-lab { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); min-width: 64px; }
+  .pp-title { text-align: center; font-family: var(--mono); font-size: 0.7rem; color: var(--ink-dim); margin: 2px 0 8px; }
+  .pbrush {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 9px; cursor: pointer;
+    border: 2px solid var(--line); background: #0c111a; color: var(--text); font-size: 0.72rem; font-weight: 700;
+  }
+  .pbrush.on { border-color: #fff; }
+  .pbrush .sw { width: 14px; height: 14px; border-radius: 4px; background: var(--act-fold); flex: 0 0 auto; }
+  .pbrush .sw.raise { background: var(--act-raise); }
+  .pbrush .sw.call  { background: var(--act-call); }
+  .pbrush .sw.rc { background: linear-gradient(90deg, var(--act-raise) 50%, var(--act-call) 50%); }
+  .pbrush .sw.rf { background: linear-gradient(90deg, var(--act-raise) 50%, var(--act-fold) 50%); }
+  .pbrush .sw.cf { background: linear-gradient(90deg, var(--act-call) 50%, var(--act-fold) 50%); }
+  #paint-matrix { touch-action: none; margin: 4px auto 0; }
+  #paint-matrix .cell { cursor: pointer; }
+  #paint-matrix.locked .cell { cursor: default; }
+  #paint-matrix .cell.unpainted { background: #182234; color: #9aabbe; text-shadow: none; }
+  #paint-matrix .cell.wrong { position: relative; }
+  #paint-matrix .cell.wrong::after {
+    content: '✕'; position: absolute; top: -4px; right: -4px; width: 13px; height: 13px; border-radius: 50%;
+    background: #ff1744; color: #fff; border: 1.5px solid #fff; font-size: 0.5rem; line-height: 10px; text-align: center; text-shadow: none;
+  }
+  .pp-result { margin-top: 10px; font-size: 0.82rem; line-height: 1.5; text-align: center; min-height: 1.2em; }
+  .pp-result b { font-size: 1.2rem; font-family: var(--mono); }
+  .pp-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+  @media (min-width: 941px) {
+    #paint-matrix { grid-template-columns: repeat(13, 38px); grid-auto-rows: 38px; gap: 3px; justify-content: center; }
+    #paint-matrix .cell { font-size: 0.8rem; }
+  }
   .cell.hero-cell {
     outline: 3px solid #ffffff;
     outline-offset: 2px;
@@ -1199,6 +1235,11 @@
       <div id="dash-streaks"></div>
     </div>
 
+    <div class="dash-card" style="margin-bottom:12px">
+      <div class="dash-h">Range malen <span class="dash-hsub">Trefferquote pro Range</span></div>
+      <div id="dash-paint"></div>
+    </div>
+
     <div class="dash-grid">
       <div class="dash-card">
         <div class="dash-h">Accuracy over time <span class="dash-hsub" id="prog-curve-sub"></span></div>
@@ -1303,6 +1344,8 @@
     <select id="filter-select" class="sbar-select"></select>
   </label>
 </div>
+
+<div id="paint-panel"><div class="pp-card" id="paint-card"></div></div>
 
 <div class="table-wrap">
   <div class="table" id="table">
@@ -1490,7 +1533,7 @@ function assertDisjoint(name, sets) {
    ================================================================ */
 const STORE_KEY = 'preflop-trainer-v2';
 const OLD_KEY = 'preflop-trainer-stats-v1';
-const APP_VERSION = '2.35.6';   // bump alongside service-worker.js CACHE_NAME on every feature push
+const APP_VERSION = '2.36.0';   // bump alongside service-worker.js CACHE_NAME on every feature push
 
 function freshStats() {
   return { version: 2, modes: {}, grind: {
@@ -1819,6 +1862,7 @@ function streakInfo(sid) {
     next: STREAK_MILESTONES.find(m => best < m) || null };
 }
 function renderStats() {
+  if (MODES[activeModeId].custom) { renderDailyHud(); return; }
   const ms = modeStats(statsId());
   $('stat-score').textContent = ms.correct + '/' + ms.total;
   $('stat-acc').textContent = ms.total ? Math.round(ms.correct / ms.total * 100) + '%' : '–';
@@ -1831,6 +1875,7 @@ function renderStats() {
 }
 function renderBuckets() {
   const mode = MODES[activeModeId];
+  if (mode.custom) return;
   $('bucket-title').textContent = mode.bucketTitle +
     (PROFILED_MODES.includes(activeModeId) ? ' · ' + PROFILES[activeProfile()].short : '') +
     (mode.tiered ? ' · Level ' + allowedDiff() + '/3 (' + DIFF_LABEL[allowedDiff()] + ')' : '');
@@ -1999,6 +2044,8 @@ function nextSpot() {
   if (autoAdvanceTimer) { clearTimeout(autoAdvanceTimer); autoAdvanceTimer = null; }
   answered = false;
   const mode = MODES[activeModeId];
+  document.body.classList.toggle('paint-mode', !!mode.custom);
+  if (mode.custom) { keymap = {}; spot = null; renderPaint(); return; }   // Range malen has no table
   spot = schedule(mode);            // Grind Loop may serve a review spot
   if (spot.table) spot.table.pot = spot.potBB, spot.table.bet = spot.betBB;   // for the pot pill
   renderTable(spot.table);
@@ -2130,6 +2177,7 @@ function renderStreakChallenges() {
   for (const grp of MODE_GROUPS) {
     html += '<div class="sc-grp">' + grp.label + '</div>';
     for (const id of grp.modes) {
+      if (MODES[id].custom) continue;
       const si = streakInfo(statsId(id));
       cleared += si.cleared; total += STREAK_MILESTONES.length;
       const stars = STREAK_MILESTONES.map((m, i) =>
@@ -4420,7 +4468,7 @@ MODES.threebetpot = {
 const REVIEW_GAP = { 1: 5, 2: 12 };   // answers until due, per box
 const CHAPTER_REF = { rfi: 'Ch 2', vsopen: 'Ch 6/10/11', iso: 'Ch 3', sizing: 'Ch 3 & 10.5', combos: 'Ch 9', cbet: 'Ch 4', flopdef: 'Ch 8', barrel: 'Ch 12', river: 'Ch 12 (ext.)', vs3bet: 'PB3 pp. 29-38', blinddef: 'PB3 pp. 20-28', valuebet: 'Ch 5', stackdepth: 'Ch 14', threebetpot: 'Ch 13' };
 const MODE_GROUPS = [
-  { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef', 'stackdepth'] },
+  { label: 'Preflop',  modes: ['rfi', 'vsopen', 'iso', 'sizing', 'vs3bet', 'blinddef', 'stackdepth', 'rangepaint'] },
   { label: 'Postflop', modes: ['cbet', 'flopdef', 'barrel', 'river', 'valuebet', 'threebetpot'] }
 ];
 const MODE_INFO = {
@@ -4619,7 +4667,7 @@ const BADGES = [
   { id: 'gold',      icon: '🥇', name: 'Gold Standard',  blurb: '90%+ over the last 40 in one mode',
     test: () => Object.keys(MODES).some(id => getTier(id) === '🥇') },
   { id: 'allmodes',  icon: '📚', name: 'Full Syllabus',  blurb: 'Played every drill mode',
-    test: () => Object.keys(MODES).every(id => (stats.modes[id] || {}).total > 0) },
+    test: () => Object.keys(MODES).filter(id => !MODES[id].custom).every(id => (stats.modes[id] || {}).total > 0) },
   { id: 'threebet25',icon: '⚡', name: 'Aggro Artist',   blurb: '25 correct answers in vs Open',
     test: () => (stats.modes.vsopen || {}).correct >= 25 },
   { id: 'iso25',     icon: '🥊', name: 'Limp Puncher',   blurb: '25 correct answers in ISO',
@@ -5095,6 +5143,7 @@ function renderProgress() {
 
   renderDailyCard();
   renderStreakChallenges();
+  renderPaintStats();
 
   // KPI strip
   const kpi = (lab, val, sub, accent) => '<div class="dash-kpi' + (accent ? ' accent' : '') +
@@ -5402,6 +5451,8 @@ function mergeStats(a, b) {
   for (const [k, v] of Object.entries(gb.tagStats || {})) { const x = ga.tagStats[k]; ga.tagStats[k] = { t: Math.max((x&&x.t)||0, v.t||0), m: Math.max((x&&x.m)||0, v.m||0) }; }
   ga.dirStats = ga.dirStats || {};
   for (const [k, v] of Object.entries(gb.dirStats || {})) ga.dirStats[k] = Math.max(ga.dirStats[k]||0, v||0);
+  ga.paint = ga.paint || {};
+  for (const [k, v] of Object.entries(gb.paint || {})) if (!ga.paint[k] || (v.tries || 0) > (ga.paint[k].tries || 0)) ga.paint[k] = v;
   ga.tierLevel = ga.tierLevel || {};
   for (const [k, v] of Object.entries(gb.tierLevel || {})) ga.tierLevel[k] = Math.max(ga.tierLevel[k]||0, v||0);
   ga.missQueue = ga.missQueue || [];
@@ -5503,6 +5554,181 @@ if ($('sync-disable')) $('sync-disable').addEventListener('click', () => {
   syncState.ready = false; syncState.ref = null;
   renderSyncUI(); setSyncStatus('Deaktiviert'); syncMsg('Sync deaktiviert (Zugangsdaten bleiben gespeichert).', true);
 });
+
+/* ================================================================
+   Range malen — fill a whole range grid from memory, then check it
+   Brushes: Raise, Call, Fold (also the eraser) and the three mixes. A mix cell
+   only counts when painted with exactly that mix brush. Unpainted = fold. The
+   score covers the cells of the true range plus any cell painted wrongly, so
+   the free folds do not inflate it. After checking the grid is locked.
+   ================================================================ */
+MODES.rangepaint = {
+  label: 'Range malen', chapter: 'PB3', custom: true,
+  bucketTitle: 'Range malen', bucketList: () => [], buttons: () => [], deal: () => ({}), grade: () => ({})
+};
+const PAINT_BRUSHES = [
+  { id: 'raise', label: 'Raise',      css: 'in-raise' },
+  { id: 'call',  label: 'Call',       css: 'in-call' },
+  { id: 'fold',  label: 'Fold',       css: null },          // also the eraser
+  { id: 'rc',    label: 'Raise/Call', css: 'in-dual' },
+  { id: 'rf',    label: 'Raise/Fold', css: 'in-bluffmix' },
+  { id: 'cf',    label: 'Call/Fold',  css: 'in-callmix' }
+];
+const PAINT_CSS = Object.fromEntries(PAINT_BRUSHES.map(b => [b.id, b.css]));
+let paintState = { kind: 'open', key: 'UTG', brush: 'raise', cells: {}, checked: false, showSolution: false, result: null, down: false, last: null };
+
+function paintKey() { return paintState.kind + ':' + paintState.key; }
+function paintName() {
+  return paintState.kind === 'open' ? paintState.key + ' Open'
+                                    : paintState.key.replace('_vs_', ' vs ') + ' (vs Open)';
+}
+// the true range as { hand: brush id }; everything missing is a fold
+function paintSolution() {
+  const sol = {};
+  if (paintState.kind === 'open') {
+    for (const h of RFI_DATA.pb3[paintState.key].open) sol[h] = 'raise';
+    return sol;
+  }
+  const e = VS_OPEN_DATA.pb3[paintState.key];
+  for (const h of e.value) sol[h] = 'raise';
+  for (const h of e.dual) sol[h] = 'rc';
+  for (const h of e.bluff) sol[h] = 'rf';
+  for (const h of e.call) sol[h] = 'call';
+  for (const h of e.callMixed) sol[h] = 'cf';
+  return sol;
+}
+function paintSelect(kind, key) {
+  paintState = { ...paintState, kind, key, cells: {}, checked: false, showSolution: false, result: null, last: null };
+  renderPaint();
+}
+function paintCheckNow() {
+  if (paintState.checked) return;
+  const sol = paintSolution();
+  const wrong = new Set();
+  let relevant = 0, correct = 0, missed = 0, extra = 0, mixup = 0;
+  for (const h of ALL_HAND_LABELS) {
+    const c = sol[h] || 'fold', u = paintState.cells[h] || 'fold';
+    if (c === 'fold' && u === 'fold') continue;          // a free fold, not scored
+    relevant++;
+    if (u === c) correct++;
+    else {
+      wrong.add(h);
+      if (u === 'fold') missed++; else if (c === 'fold') extra++; else mixup++;
+    }
+  }
+  const pct = relevant ? Math.round(correct / relevant * 100) : 0;
+  paintState.checked = true;
+  paintState.result = { pct, correct, relevant, missed, extra, mixup, wrong };
+  const g = stats.grind;
+  if (!g.paint) g.paint = {};
+  const p = g.paint[paintKey()] || (g.paint[paintKey()] = { tries: 0, sum: 0, best: 0, last: 0 });
+  p.tries++; p.sum += pct; p.best = Math.max(p.best, pct); p.last = pct;
+  save();
+  renderPaint();
+}
+function paintStyleCell(el, h) {
+  const view = paintState.showSolution ? paintSolution() : paintState.cells;
+  const b = view[h];
+  el.className = 'cell' + (b ? ' ' + PAINT_CSS[b] : (paintState.showSolution ? '' : ' unpainted')) +   // solution: folds are the normal blue
+   
+    (paintState.result && paintState.result.wrong.has(h) ? ' wrong' : '');
+}
+function paintAt(clientX, clientY) {
+  if (paintState.checked) return;
+  const el = document.elementFromPoint(clientX, clientY);
+  if (!el || !el.dataset || !el.dataset.h || !el.closest('#paint-matrix')) return;
+  const h = el.dataset.h;
+  if (paintState.last === h) return;
+  paintState.last = h;
+  if (paintState.brush === 'fold') delete paintState.cells[h]; else paintState.cells[h] = paintState.brush;
+  paintStyleCell(el, h);
+}
+function renderPaint() {
+  const card = $('paint-card'); if (!card) return;
+  const s = paintState;
+  const chip = (txt, on, fn) => { const b = document.createElement('button'); b.className = 'pill' + (on ? ' active' : ''); b.textContent = txt; b.onclick = fn; return b; };
+  card.innerHTML = '';
+  // what to paint
+  const rowKind = document.createElement('div'); rowKind.className = 'pp-row';
+  rowKind.innerHTML = '<span class="pp-lab">Range</span>';
+  rowKind.appendChild(chip('Open', s.kind === 'open', () => paintSelect('open', 'UTG')));
+  rowKind.appendChild(chip('vs Open', s.kind === 'vsopen', () => paintSelect('vsopen', 'MP_vs_UTG')));
+  card.appendChild(rowKind);
+  if (s.kind === 'open') {
+    const r = document.createElement('div'); r.className = 'pp-row'; r.innerHTML = '<span class="pp-lab">Position</span>';
+    for (const p of HERO_POSITIONS) r.appendChild(chip(p, s.key === p, () => paintSelect('open', p)));
+    card.appendChild(r);
+  } else {
+    const groups = groupMatchupsByHero(VS_OPEN_MATCHUPS, ['MP', 'CO', 'BTN', 'SB', 'BB']);
+    const hero = s.key.split('_vs_')[0];
+    const r1 = document.createElement('div'); r1.className = 'pp-row'; r1.innerHTML = '<span class="pp-lab">Hero</span>';
+    for (const g of groups) r1.appendChild(chip(g.label, g.id === hero, () => paintSelect('vsopen', g.keys[0].key)));
+    card.appendChild(r1);
+    const r2 = document.createElement('div'); r2.className = 'pp-row'; r2.innerHTML = '<span class="pp-lab">vs Opener</span>';
+    for (const k of groups.find(g => g.id === hero).keys) r2.appendChild(chip(k.label, s.key === k.key, () => paintSelect('vsopen', k.key)));
+    card.appendChild(r2);
+  }
+  // brushes
+  const rb = document.createElement('div'); rb.className = 'pp-row'; rb.innerHTML = '<span class="pp-lab">Pinsel</span>';
+  for (const b of PAINT_BRUSHES) {
+    const btn = document.createElement('button');
+    btn.className = 'pbrush' + (s.brush === b.id ? ' on' : '');
+    btn.innerHTML = '<span class="sw ' + b.id + '"></span>' + b.label + (b.id === 'fold' ? ' (radiert)' : '');
+    btn.onclick = () => { s.brush = b.id; renderPaint(); };
+    rb.appendChild(btn);
+  }
+  card.appendChild(rb);
+  // grid
+  const title = document.createElement('div'); title.className = 'pp-title';
+  title.textContent = paintName() + (s.checked ? (s.showSolution ? ' · Lösung' : ' · deine Eingabe') : ' · male die Range aus dem Gedächtnis');
+  card.appendChild(title);
+  const grid = document.createElement('div'); grid.className = 'matrix' + (s.checked ? ' locked' : ''); grid.id = 'paint-matrix';
+  for (const h of ALL_HAND_LABELS) {
+    const c = document.createElement('div'); c.dataset.h = h; c.textContent = h;
+    paintStyleCell(c, h); grid.appendChild(c);
+  }
+  grid.addEventListener('pointerdown', e => { e.preventDefault(); s.down = true; s.last = null; paintAt(e.clientX, e.clientY); });
+  grid.addEventListener('pointermove', e => { if (s.down) paintAt(e.clientX, e.clientY); });
+  card.appendChild(grid);
+  // result + actions
+  const res = document.createElement('div'); res.className = 'pp-result';
+  if (s.result) {
+    const r = s.result;
+    const parts = [];
+    if (r.missed) parts.push(r.missed + ' vergessen');
+    if (r.extra) parts.push(r.extra + ' zu viel gespielt');
+    if (r.mixup) parts.push(r.mixup + ' falsche Aktion');
+    res.innerHTML = '<b>' + r.pct + ' %</b> · ' + r.correct + ' von ' + r.relevant + ' relevanten Zellen richtig' +
+      (parts.length ? '<br><span style="color:var(--muted)">' + parts.join(' · ') + ' — ✕ markiert die Fehler</span>'
+                    : '<br><span style="color:var(--green)">Fehlerfrei 🎉</span>');
+  } else res.textContent = 'Unbemalt zählt als Fold.';
+  card.appendChild(res);
+  const act = document.createElement('div'); act.className = 'pp-actions';
+  const mk = (txt, fn) => { const b = document.createElement('button'); b.className = 'backup-btn'; b.textContent = txt; b.onclick = fn; return b; };
+  if (!s.checked) {
+    act.appendChild(mk('✓ Prüfen', paintCheckNow));
+    act.appendChild(mk('Alles löschen', () => { s.cells = {}; renderPaint(); }));
+  } else {
+    act.appendChild(mk(s.showSolution ? 'Meine Eingabe zeigen' : 'Lösung zeigen', () => { s.showSolution = !s.showSolution; renderPaint(); }));
+    act.appendChild(mk('Neu starten', () => paintSelect(s.kind, s.key)));
+  }
+  card.appendChild(act);
+}
+window.addEventListener('pointerup', () => { paintState.down = false; });
+window.addEventListener('pointercancel', () => { paintState.down = false; });
+function renderPaintStats() {
+  const box = $('dash-paint'); if (!box) return;
+  const p = (stats.grind && stats.grind.paint) || {};
+  const rows = Object.entries(p).sort((a, b) => b[1].tries - a[1].tries);
+  box.innerHTML = rows.length
+    ? '<table class="dash-mt"><thead><tr><th>Range</th><th style="text-align:right">Versuche</th><th style="text-align:right">Ø</th><th style="text-align:right">Beste</th></tr></thead><tbody>' +
+      rows.map(([k, v]) => {
+        const [kind, key] = k.split(':');
+        const name = kind === 'open' ? key + ' Open' : key.replace('_vs_', ' vs ');
+        return '<tr><td class="mn">' + name + '</td><td class="rr">' + v.tries + '</td><td class="rr">' + Math.round(v.sum / v.tries) + ' %</td><td class="rr">' + v.best + ' %</td></tr>';
+      }).join('') + '</tbody></table>'
+    : '<div class="dash-empty">Noch keine Range gemalt.</div>';
+}
 
 /* ---------------- boot ---------------- */
 // Combos drill was removed — drop it from any resume/review state so it never surfaces
